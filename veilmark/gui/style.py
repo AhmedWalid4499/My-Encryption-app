@@ -28,6 +28,10 @@ QToolTip {{ background: {TEXT}; color: white; border: none; padding: 6px 8px; bo
 #NavList::item {{ color: #CFCDEB; padding: 12px 18px; margin: 2px 12px; border-radius: 10px; }}
 #NavList::item:hover {{ background: #2C2852; color: white; }}
 #NavList::item:selected {{ background: {ACCENT}; color: white; }}
+#UpdatePill {{ background: #2E2A5C; color: white; border: 1px solid #5B4FE0; border-radius: 10px;
+    padding: 10px 12px; text-align: left; font-weight: 600; }}
+#UpdatePill:hover {{ background: {ACCENT}; color: white; }}
+#UpdatePill:disabled {{ color: #CFCDEB; background: #26224A; }}
 #SidebarFoot {{ color: #7F7BAE; font-size: 8.5pt; padding: 14px 22px; }}
 
 #PageTitle {{ font-size: 20pt; font-weight: 700; }}

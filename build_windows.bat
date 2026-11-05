@@ -15,7 +15,7 @@ echo.
 echo Portable app: dist\VeilMark\VeilMark.exe
 where iscc >nul 2>nul && (
     iscc packaging\installer.iss || goto :error
-    echo Installer:   dist\VeilMark-Setup-1.0.0.exe
+    echo Installer:   dist\VeilMark-Setup.exe
 )
 goto :eof
 :error

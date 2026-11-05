@@ -214,6 +214,28 @@ class ProtectPage(Page):
                                                        else "Show protection layers ▾")))
         opts.add(label("All recommended layers are on. Protected copies are saved next to the originals as "
                        "“name - for Recipient”.", "Muted"))
+
+        # visible deterrent footer
+        self.footer_cb = QCheckBox("Add a visible “Confidential – prepared for …” footer")
+        self.footer_cb.setChecked(settings.visible_footer)
+        self.footer_cb.setToolTip("Shows the recipient's name at the bottom of every page/slide (Excel: printed "
+                                  "pages). A visible reminder that the copy is traceable.")
+        opts.add(self.footer_cb)
+        self.footer_box = QWidget()
+        fb = QVBoxLayout(self.footer_box)
+        fb.setContentsMargins(28, 0, 0, 0)
+        fb.setSpacing(6)
+        self.footer_edit = QLineEdit(settings.footer_template)
+        self.footer_edit.setToolTip("You can use {recipient}, {owner}, {organization} and {date}.")
+        fb.addWidget(self.footer_edit)
+        self.footer_preview = label("", "Hint")
+        fb.addWidget(self.footer_preview)
+        opts.add(self.footer_box)
+        self.footer_box.setVisible(settings.visible_footer)
+        self.footer_cb.toggled.connect(self._footer_toggled)
+        self.footer_edit.textChanged.connect(self._footer_changed)
+        self.recipient.textChanged.connect(lambda _t: self._footer_preview())
+        self._footer_preview()
         out_row = QHBoxLayout()
         self.out_label = label("", "Hint")
         out_btn = QPushButton("Change save folder…")
@@ -257,6 +279,24 @@ class ProtectPage(Page):
     def _set_layer(self, key, on):
         self.settings.layers[key] = on
         self.settings.save()
+
+    def _footer_toggled(self, on):
+        self.footer_box.setVisible(on)
+        self.settings.visible_footer = on
+        self.settings.save()
+
+    def _footer_changed(self, text):
+        self.settings.footer_template = text
+        self.settings.save()
+        self._footer_preview()
+
+    def _footer_preview(self):
+        from ..watermark.footer import render
+
+        who = self.recipient.text().strip() or "Recipient"
+        text = render(self.footer_edit.text(), who, self.settings.owner_name, self.settings.organization)
+        self.footer_preview.setText(f"Preview:  {text}   ·   placeholders: {{recipient}} {{owner}} "
+                                    f"{{organization}} {{date}}")
 
     def _show_out(self):
         folder = self.settings.output_folder
@@ -833,7 +873,7 @@ class HistoryPage(Page):
 class SettingsPage(Page):
     changed = Signal()
 
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, updates=None):
         super().__init__("Settings", "Your details and your team's watermark key.")
         self.settings = settings
 
@@ -883,12 +923,47 @@ class SettingsPage(Page):
         self.add(key)
         self._show_key(False)
 
+        if updates is not None:
+            from ..updater import RELEASES_PAGE
+
+            up = Card("Updates", subtitle=f"You have version {__version__}. New versions are downloaded in the "
+                                          "background and installed with one click.")
+            self.auto_update = QCheckBox("Check for updates automatically and download them in the background")
+            self.auto_update.setChecked(settings.check_updates)
+            self.auto_update.toggled.connect(self._auto_update)
+            up.add(self.auto_update)
+            row = QHBoxLayout()
+            self.update_btn = QPushButton("Check for updates now")
+            self.update_btn.clicked.connect(lambda: updates.primary_action(self))
+            row.addWidget(self.update_btn)
+            self.update_status = label("", "Muted")
+            row.addWidget(self.update_status, 1)
+            up.add(row)
+            link = label(f'Download page to share with others: <a href="{RELEASES_PAGE}">{RELEASES_PAGE}</a>',
+                         "Hint")
+            link.setTextInteractionFlags(Qt.TextBrowserInteraction)
+            link.setOpenExternalLinks(True)
+            up.add(link)
+            self.add(up)
+            updates.changed.connect(self._update_state)
+            self._update_state(updates.state, updates.text)
+
         about = Card("About VeilMark")
         about.add(label(f"Version {__version__}. Based on the master's thesis work on chaotic image encryption "
                         "and LSB watermarking (Mathematica), re-engineered for Office documents.\n"
                         f"Your settings and history are stored in: {Settings.path().parent}", "Muted"))
         self.add(about)
         self.finish()
+
+    def _auto_update(self, on):
+        self.settings.check_updates = on
+        self.settings.save()
+
+    def _update_state(self, state, text):
+        self.update_status.setText(text)
+        self.update_btn.setEnabled(state not in ("checking", "downloading"))
+        self.update_btn.setText({"ready": "Install update && restart", "available": "Open download page",
+                                 "error": "Try again"}.get(state, "Check for updates now"))
 
     def _show_key(self, on):
         k = format_key(self.settings.team_key)

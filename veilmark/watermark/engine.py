@@ -24,7 +24,7 @@ from typing import Callable, Dict, List, Optional
 
 from lxml import etree
 
-from . import lsb, zerowidth
+from . import footer, lsb, zerowidth
 from .ooxml import NotOfficeFile, Package, parse_xml, to_xml
 from .payload import Record, Token, open_record, open_record_b64, split_tokens
 
@@ -38,6 +38,7 @@ LAYER_CUSTOMXML = "Custom XML part"
 LAYER_TEXT = "Invisible text marks"
 LAYER_SHEET = "Hidden data sheet"
 LAYER_IMAGES = "Image pixels (LSB)"
+LAYER_FOOTER = "Visible footer"  # deterrent only - not used for tracing
 ALL_LAYERS = [LAYER_PROPS, LAYER_CUSTOMXML, LAYER_TEXT, LAYER_SHEET, LAYER_IMAGES]
 
 PROP_PREFIX = "VeilMark.Record."
@@ -73,6 +74,7 @@ class EmbedOptions:
     hidden_sheet: bool = True
     images: bool = True
     excel_cell_text: bool = False  # opt-in: alters cell strings, may affect formulas/lookups
+    footer_text: str = ""          # non-empty -> add a visible "Confidential - prepared for ..." footer
 
 
 @dataclass
@@ -301,6 +303,9 @@ def embed_office(data: bytes, record: Record, key: bytes, options: EmbedOptions 
     report = EmbedReport()
     off = "skipped - turned off"
 
+    if options.footer_text:
+        # added before the invisible marks so the footer text carries marks too
+        report.layers[LAYER_FOOTER] = footer.apply(pkg, options.footer_text)
     report.layers[LAYER_PROPS] = _write_properties(pkg, record_b64) if options.properties else off
     report.layers[LAYER_CUSTOMXML] = _write_customxml(pkg, record_b64) if options.custom_xml else off
     if options.invisible_text:

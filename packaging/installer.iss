@@ -2,7 +2,7 @@
 ; Usage (from the repository root):  iscc packaging\installer.iss
 #define AppName "VeilMark"
 #ifndef AppVersion
-  #define AppVersion "1.0.0"
+  #define AppVersion "1.1.0"
 #endif
 
 [Setup]
@@ -14,7 +14,9 @@ DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 OutputDir=..\dist
-OutputBaseFilename=VeilMark-Setup-{#AppVersion}
+OutputBaseFilename=VeilMark-Setup
+CloseApplications=yes
+RestartApplications=no
 SetupIconFile=..\assets\veilmark.ico
 UninstallDisplayIcon={app}\VeilMark.exe
 Compression=lzma2/max
@@ -37,3 +39,5 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\VeilMark.exe"; Tasks: desktop
 
 [Run]
 Filename: "{app}\VeilMark.exe"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; after a silent in-app update, reopen VeilMark automatically
+Filename: "{app}\VeilMark.exe"; Flags: nowait; Check: WizardSilent

@@ -8,12 +8,13 @@ from pathlib import Path
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
-                               QMainWindow, QStackedWidget, QVBoxLayout, QWidget)
+                               QMainWindow, QPushButton, QStackedWidget, QVBoxLayout, QWidget)
 
 from .. import APP_NAME, __version__
 from ..registry import Ledger
 from ..settings import Settings
 from . import style
+from .updates import UpdateController
 from .pages import EncryptPage, HistoryPage, HomePage, ProtectPage, SettingsPage, TracePage
 
 NAV = [("🏠", "Home"), ("🛡️", "Protect"), ("🔍", "Trace a leak"), ("🔐", "Encrypt"), ("🕘", "History"),
@@ -30,6 +31,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.settings = Settings.load()
         self.ledger = Ledger()
+        self.updates = UpdateController(self.settings, self)
         self.setWindowTitle(f"{APP_NAME} — Document Watermarking & Encryption")
         self.resize(1180, 800)
         self.setMinimumSize(940, 640)
@@ -58,6 +60,16 @@ class MainWindow(QMainWindow):
             QListWidgetItem(f"{icon}   {text}", self.nav)
         self.nav.setCursor(Qt.PointingHandCursor)
         sl.addWidget(self.nav, 1)
+        self.update_pill = QPushButton()
+        self.update_pill.setObjectName("UpdatePill")
+        self.update_pill.setCursor(Qt.PointingHandCursor)
+        self.update_pill.hide()
+        self.update_pill.clicked.connect(lambda: self.updates.primary_action(self))
+        pill_wrap = QHBoxLayout()
+        pill_wrap.setContentsMargins(12, 0, 12, 4)
+        pill_wrap.addWidget(self.update_pill)
+        sl.addLayout(pill_wrap)
+        self.updates.changed.connect(self._update_state)
         foot = QLabel(f"v{__version__}")
         foot.setObjectName("SidebarFoot")
         sl.addWidget(foot)
@@ -80,7 +92,7 @@ class MainWindow(QMainWindow):
         self.trace = TracePage(self.settings, self.ledger)
         self.encrypt = EncryptPage(self.settings)
         self.history = HistoryPage(self.ledger)
-        self.settings_page = SettingsPage(self.settings)
+        self.settings_page = SettingsPage(self.settings, self.updates)
         self.settings_page.changed.connect(self._settings_changed)
         for p in (self.home, self.protect, self.trace, self.encrypt, self.history, self.settings_page):
             self.stack.addWidget(p)
@@ -92,6 +104,19 @@ class MainWindow(QMainWindow):
         self.home = HomePage(self.settings)
         self.home.navigate.connect(self.nav.setCurrentRow)
         self.stack.insertWidget(idx, self.home)
+
+    def _update_state(self, state: str, text: str):
+        labels = {
+            "downloading": "⬇  " + text.replace("Downloading version", "Downloading"),
+            "ready": f"✨  Update {self.updates.info.version if self.updates.info else ''} ready\nClick to install",
+            "available": f"✨  Version {self.updates.info.version if self.updates.info else ''} available",
+        }
+        if state in labels:
+            self.update_pill.setText(labels[state])
+            self.update_pill.setEnabled(state != "downloading")
+            self.update_pill.show()
+        elif state != "checking":
+            self.update_pill.hide()
 
     def _go(self, row: int):
         if row == 4:
@@ -119,6 +144,7 @@ def main() -> int:
         app.setWindowIcon(QIcon(str(icon)))
     win = MainWindow()
     win.show()
+    win.updates.start()
     return app.exec()
 
 

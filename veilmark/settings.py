@@ -52,6 +52,10 @@ class Settings:
     output_folder: str = ""          # empty = next to the original file
     filename_pattern: str = "{stem} - for {recipient}{ext}"
     aes_armour: bool = True
+    visible_footer: bool = False
+    footer_template: str = "CONFIDENTIAL – Prepared for {recipient} · {organization} · {date}"
+    check_updates: bool = True
+    last_update_check: float = 0.0
     layers: dict = field(default_factory=lambda: {
         "properties": True, "custom_xml": True, "invisible_text": True,
         "hidden_sheet": True, "images": True, "excel_cell_text": False,

@@ -23,13 +23,37 @@ It is a re-engineering of the thesis Mathematica code (`InsertSecretMessage`, `E
 
 ## Getting the Windows app
 
-**Easiest:** open the repository's **Actions** tab, then the latest *Test & build Windows app* run, and download the
-**VeilMark-Windows** artifact. It contains:
+**Download:** https://github.com/AhmedWalid4499/My-Encryption-app/releases/latest
 
-* `VeilMark-Setup-1.0.0.exe`: a normal Windows installer (no admin rights needed).
+Direct installer link (always the newest version):
+https://github.com/AhmedWalid4499/My-Encryption-app/releases/latest/download/VeilMark-Setup.exe
+
+* `VeilMark-Setup.exe`: a normal Windows installer (no admin rights needed).
 * `VeilMark-Portable.zip`: unzip it and run `VeilMark.exe`.
+* `SHA256SUMS.txt`: checksums of both files.
 
-Pushing a tag such as `v1.0.0` also publishes both files as a GitHub Release.
+Windows SmartScreen may say *"Windows protected your PC"* because the app isn't code-signed yet. Click
+**More info**, then **Run anyway**.
+
+### Automatic updates
+VeilMark checks GitHub for a newer release when it starts (and every 6 hours while open). If there is one, it
+**downloads it in the background**, verifies its SHA-256 checksum, and shows **"✨ Update ready – Click to install"**
+in the sidebar. One click closes the app, installs the new version and reopens it. Settings, team key and sharing
+history are kept. You can turn this off, or check manually, under **Settings → Updates**.
+
+**Publishing a new version (for the maintainer):** bump `__version__` in `veilmark/__init__.py` (and the version in
+`packaging/installer.iss` / `packaging/version_info.txt`; a test checks they match), commit, then push a tag:
+
+```bash
+git tag v1.2.0
+```
+
+```bash
+git push origin v1.2.0
+```
+
+GitHub Actions tests the code on Linux and Windows, builds the installer and publishes the release. Every installed
+copy picks it up automatically.
 
 **Build it yourself on Windows:** install Python 3.11+ from python.org, then double-click `build_windows.bat`
 (it installs dependencies, runs the tests and builds `dist\VeilMark\VeilMark.exe`; if Inno Setup 6 is
@@ -58,6 +82,13 @@ protect as its owner.
 **Re-sharing:** if Sara's copy (or any protected copy) is protected again for someone else, VeilMark detects the
 existing watermark and *adds a link to its chain of custody* (Owner → Sara → Omar → …). Every protected copy is
 also logged in **History**.
+
+**Visible footer (optional deterrent):** tick *Add a visible "Confidential – prepared for …" footer* in step 3. Every
+page (Word), every slide (PowerPoint) or every printed sheet (Excel, shown in Page Layout view and on print) then
+shows e.g. `CONFIDENTIAL – Prepared for Sara Ahmed · BookBeans · 05 Nov 2026`. You can edit the wording with
+`{recipient}`, `{owner}`, `{organization}` and `{date}`. Existing footers are kept. When a copy is re-shared, the
+footer is switched to the new recipient. The footer can be deleted by hand, but the invisible layers still trace
+the copy.
 
 ### Trace a leak
 Drop the file you found (or switch to **Pasted text** and paste text copied from an email, website or chat). You'll
@@ -167,12 +198,14 @@ veilmark/
   watermark/payload.py tokens, encrypted records, chain of custody
   watermark/ooxml.py   Office Open XML package editing (lxml, keeps Office happy)
   watermark/engine.py  the five layers: embed + trace
+  watermark/footer.py  optional visible "Confidential – prepared for …" footer
+  updater.py           GitHub Releases update check, verified download, silent install
   registry.py          SQLite sharing history (%APPDATA%\VeilMark\ledger.db)
   settings.py          name, organisation, team key (%APPDATA%\VeilMark\settings.json)
   service.py           protect_file / trace_file used by GUI and CLI
   gui/                 PySide6 (Qt) desktop interface
   cli.py               command line
-tests/                 43 tests incl. LibreOffice re-save, Inspect-Document, slide-copy, multi-hop, cross-PC vectors
+tests/                 59 tests incl. LibreOffice re-save, Inspect-Document, slide-copy, multi-hop, cross-PC vectors
 packaging/             PyInstaller spec, Inno Setup installer script, Windows version info
 ```
 
