@@ -49,6 +49,7 @@ class TraceReport:
     chain: List[ChainEntry] = field(default_factory=list)
     likely_source: Optional[ChainEntry] = None
     message: str = ""                # the watermark text of this exact copy
+    legacy_text: bool = False        # message recovered from an older version's "Recipient" field
     layer_status: List[tuple] = field(default_factory=list)  # (layer, found, detail)
 
 
@@ -162,6 +163,10 @@ def build_report(name: str, result: TraceResult, ledger: Optional[Ledger] = None
         rep.message = next((c.message for c in reversed(rep.chain) if c.message), "")
     if not rep.message and record:
         rep.message = record.latest_message
+    if not rep.message and rep.likely_source and rep.likely_source.recipient:
+        # VeilMark 1.0/1.1 had no watermark-text box: people typed their watermark into "Recipient"
+        rep.message = rep.likely_source.recipient
+        rep.legacy_text = True
     if rep.likely_source and rep.likely_source.recipient:
         rep.headline = f"Watermarked copy given to {rep.likely_source.recipient}"
     else:

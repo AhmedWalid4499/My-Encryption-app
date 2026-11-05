@@ -147,3 +147,16 @@ def test_old_positional_api_still_works(env):
     out = protect_file(src, "Alice", "note", settings=s, ledger=ledger).output
     rep = trace_file(out, settings=s, ledger=ledger)
     assert rep.likely_source.recipient == "Alice" and rep.headline == "Watermarked copy given to Alice"
+
+
+def test_file_from_older_version_shows_recipient_text(env):
+    """1.1.0 had no text box: what people typed as 'Recipient' is shown as the watermark text."""
+    s, ledger, tmp = env
+    src = tmp / "deck.pptx"
+    make_pptx(src)
+    old = protect_file(src, "Confidential BookBeans 2026", settings=s, ledger=ledger).output
+    rep = trace_file(old, settings=s, ledger=ledger)
+    assert rep.message == "Confidential BookBeans 2026" and rep.legacy_text
+    new = embed_watermark(src, message=TEXT, settings=s, ledger=ledger).output
+    rep = trace_file(new, settings=s, ledger=ledger)
+    assert rep.message == TEXT and not rep.legacy_text

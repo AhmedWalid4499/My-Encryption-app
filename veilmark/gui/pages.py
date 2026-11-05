@@ -436,6 +436,11 @@ class ExtractPage(Page):
         self.result_text.setWordWrap(True)
         self.result_text.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.result_card.add(self.result_text)
+        self.legacy_hint = label("This file was watermarked with an older VeilMark (1.1 or earlier), which had no "
+                                 "watermark-text box — this is the text that was typed in its “Recipient” field.",
+                                 "Hint")
+        self.legacy_hint.hide()
+        self.result_card.add(self.legacy_hint)
         copy_row = QHBoxLayout()
         copy = QPushButton("Copy text")
         copy.clicked.connect(lambda: QGuiApplication.clipboard().setText(self.last.message if self.last else ""))
@@ -516,8 +521,9 @@ class ExtractPage(Page):
             self.result_text.setText(html.escape(rep.message) if rep.message else
                                      "<span style='color:#6B7086'>(this copy was watermarked without text — "
                                      "see the details below)</span>")
+            self.legacy_hint.setVisible(rep.legacy_text)
             src_ = rep.likely_source
-            rows = [("Copy for", (src_.recipient if src_ and src_.recipient else "—")),
+            rows = [("Copy for", (src_.recipient if src_ and src_.recipient and not rep.legacy_text else "—")),
                     ("Embedded on", _fmt_time(src_.timestamp) if src_ else "—"),
                     ("Owner", " · ".join(x for x in (rep.owner, rep.organization) if x) or "—"),
                     ("Document", rep.title or "—")]
@@ -532,7 +538,8 @@ class ExtractPage(Page):
                     who = c.recipient or "—"
                     if c.source == "ledger":
                         who += "  (from history)"
-                    vals = [str(c.step), c.message or "—", who, _fmt_time(c.timestamp)]
+                    text = c.message or (c.recipient if rep.legacy_text else "") or "—"
+                    vals = [str(c.step), text, who, _fmt_time(c.timestamp)]
                     for col, v in enumerate(vals):
                         item = QTableWidgetItem(v)
                         if last:

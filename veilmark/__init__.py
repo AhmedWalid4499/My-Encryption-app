@@ -4,5 +4,5 @@ Re-implementation (in Python) of the image watermarking / chaotic encryption
 methodology originally written in Mathematica, extended to Office documents.
 """
 
-__version__ = "1.2.0"
+__version__ = "1.2.1"
 APP_NAME = "VeilMark"
