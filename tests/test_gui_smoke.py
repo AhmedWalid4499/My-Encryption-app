@@ -1,8 +1,9 @@
 """Build the main window headless in a child process.
 
-Runs in a subprocess that ends with ``os._exit`` after its checks: Qt can crash
-(SIGBUS/SIGSEGV) while Python tears widgets down at interpreter exit, which would
-otherwise kill the whole pytest run even though every check passed.
+Runs in a subprocess that ends abruptly after its checks (os._exit, or
+TerminateProcess on Windows): the headless Qt plugin can crash (SIGBUS/SIGSEGV,
+0xC0000005) while widgets and DLLs are torn down at exit, which would otherwise
+fail the run even though every check passed.
 """
 
 import os
@@ -39,9 +40,19 @@ SCRIPT = textwrap.dedent("""
           and password_strength("")[0] == 0 and password_strength("Sakura#Slice-2027")[0] >= 4
           and w.embed.footer_cb is not None and w.updates.state == "idle")
     QThreadPool.globalInstance().waitForDone(5000)
+    w.close()
+    w.deleteLater()
+    app.processEvents()
     sys.stdout.write("GUI-OK\\n" if ok else "GUI-FAIL\\n")
     sys.stdout.flush()
-    os._exit(0 if ok else 1)
+    code = 0 if ok else 1
+    if sys.platform == "win32":
+        # os._exit still runs DLL unload on Windows, where the offscreen Qt plugin can crash;
+        # TerminateProcess ends the process immediately with our exit code.
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        k32.TerminateProcess(k32.GetCurrentProcess(), code)
+    os._exit(code)
 """)
 
 
