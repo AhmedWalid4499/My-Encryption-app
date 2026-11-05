@@ -6,6 +6,7 @@ import base64
 import json
 import os
 import sys
+import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -44,6 +45,48 @@ def parse_key(text: str) -> str:
     return k
 
 
+# --------------------------------------------------------------------------- #
+# Keyring: every team key ever used on this computer (never shrinks)
+# --------------------------------------------------------------------------- #
+def keyring_path() -> Path:
+    return data_dir() / "keyring.json"
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def keyring_load() -> list:
+    """[{"key": ..., "added": iso-date, "label": ...}, ...] oldest first. Never raises."""
+    try:
+        data = json.loads(keyring_path().read_text(encoding="utf-8"))
+        return [k for k in data.get("keys", []) if isinstance(k, dict) and k.get("key")]
+    except (OSError, ValueError, AttributeError):
+        return []
+
+
+def keyring_add(key: str, label: str = "") -> None:
+    keys = keyring_load()
+    if any(k["key"] == key for k in keys):
+        return
+    keys.append({"key": key, "added": time.strftime("%Y-%m-%d %H:%M"), "label": label})
+    try:
+        _atomic_write(keyring_path(), json.dumps({"keys": keys}, indent=2))
+    except OSError:
+        pass
+
+
+def derive_key(team_key: str) -> bytes:
+    """256-bit working key derived (HKDF-SHA256) from a shareable team key."""
+    from cryptography.hazmat.primitives.hashes import SHA256
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
+    raw = base64.b32decode(team_key + "=" * (-len(team_key) % 8))
+    return HKDF(algorithm=SHA256(), length=32, salt=b"VeilMark", info=b"team watermark key v1").derive(raw)
+
+
 @dataclass
 class Settings:
     owner_name: str = ""
@@ -56,6 +99,7 @@ class Settings:
     footer_template: str = "CONFIDENTIAL – Prepared for {recipient} · {organization} · {date}"
     check_updates: bool = True
     last_update_check: float = 0.0
+    last_message: str = ""           # watermark text used last time (pre-filled on the Embed page)
     layers: dict = field(default_factory=lambda: {
         "properties": True, "custom_xml": True, "invisible_text": True,
         "hidden_sheet": True, "images": True, "excel_cell_text": False,
@@ -63,41 +107,98 @@ class Settings:
 
     @property
     def key_bytes(self) -> bytes:
-        """256-bit working key derived (HKDF-SHA256) from the shareable team key."""
-        from cryptography.hazmat.primitives.hashes import SHA256
-        from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+        return derive_key(self.team_key)
 
-        k = self.team_key
-        raw = base64.b32decode(k + "=" * (-len(k) % 8))
-        return HKDF(algorithm=SHA256(), length=32, salt=b"VeilMark", info=b"team watermark key v1").derive(raw)
+    @property
+    def all_key_bytes(self) -> list:
+        """Current key first, then every older key from the keyring (so old watermarks still extract)."""
+        keys = [self.team_key] + [k["key"] for k in reversed(keyring_load()) if k["key"] != self.team_key]
+        out = []
+        for k in keys:
+            try:
+                out.append(derive_key(k))
+            except (ValueError, TypeError):
+                continue
+        return out
+
+    def set_team_key(self, new_key: str, label: str = "") -> None:
+        """Switch team key; the old one stays in the keyring so its watermarks remain readable."""
+        keyring_add(self.team_key, "previous key")
+        self.team_key = new_key
+        keyring_add(new_key, label)
+        self.save()
 
     # -- persistence -------------------------------------------------------- #
     @staticmethod
     def path() -> Path:
         return data_dir() / "settings.json"
 
+    @staticmethod
+    def backup_path() -> Path:
+        return data_dir() / "settings.backup.json"
+
+    @classmethod
+    def _from_file(cls, path: Path) -> "Settings":
+        """Read with retries (antivirus / OneDrive can hold a short lock). Raises on failure."""
+        last = None
+        for _ in range(5):
+            try:
+                text = path.read_text(encoding="utf-8")
+                break
+            except PermissionError as exc:
+                last = exc
+                time.sleep(0.3)
+        else:
+            raise last
+        data = json.loads(text)
+        if not isinstance(data, dict) or not data.get("team_key"):
+            raise ValueError("settings file has no team key")
+        s = cls()
+        for k, v in data.items():
+            if hasattr(s, k):
+                if k == "layers" and isinstance(v, dict):
+                    s.layers.update(v)
+                else:
+                    setattr(s, k, v)
+        return s
+
     @classmethod
     def load(cls) -> "Settings":
-        p = cls.path()
+        """Load settings. Never replaces an existing team key with a new random one:
+        a damaged file is kept aside and restored from the backup copy or the keyring."""
+        p, backup = cls.path(), cls.backup_path()
+        s = None
         if p.exists():
             try:
-                data = json.loads(p.read_text(encoding="utf-8"))
-                s = cls()
-                for k, v in data.items():
-                    if hasattr(s, k):
-                        if k == "layers":
-                            s.layers.update(v)
-                        else:
-                            setattr(s, k, v)
-                return s
-            except (ValueError, OSError):
-                pass
-        s = cls()
-        s.save()
+                s = cls._from_file(p)
+            except (OSError, ValueError, TypeError):
+                if p.exists():
+                    try:
+                        os.replace(p, p.with_name(f"settings.damaged-{time.strftime('%Y%m%d-%H%M%S')}.json"))
+                    except OSError:
+                        pass
+        if s is None and backup.exists():
+            try:
+                s = cls._from_file(backup)
+            except (OSError, ValueError, TypeError):
+                s = None
+        if s is None:
+            s = cls()
+            ring = keyring_load()
+            if ring:  # settings lost but keys known: keep using the most recent one
+                s.team_key = ring[-1]["key"]
+        keyring_add(s.team_key, "team key")
+        try:
+            s.save()
+        except OSError:
+            pass
         return s
 
     def save(self) -> None:
-        p = self.path()
-        tmp = p.with_suffix(".tmp")
-        tmp.write_text(json.dumps(asdict(self), indent=2), encoding="utf-8")
-        os.replace(tmp, p)
+        text = json.dumps(asdict(self), indent=2)
+        _atomic_write(self.path(), text)
+        try:
+            _atomic_write(self.backup_path(), text)
+        except OSError:
+            pass
+        keyring_add(self.team_key, "team key")

@@ -20,7 +20,7 @@ from ..registry import Ledger
 from ..service import TraceReport, protect_file, trace_file, trace_pasted_text
 from ..settings import Settings, format_key, parse_key
 from ..watermark.engine import SUPPORTED_PROTECT
-from . import style
+from . import icons, style
 from .widgets import Banner, Card, DropZone, FileList, label, open_path, reveal_in_explorer, run_in_background
 
 OFFICE_FILTER = ("Documents (*.docx *.pptx *.xlsx *.docm *.pptm *.xlsm *.png *.bmp *.tif *.tiff *.txt *.csv *.md "
@@ -83,7 +83,15 @@ class HomeTile(QFrame):
         self.setMinimumHeight(150)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(22, 20, 22, 20)
-        for t, n in ((icon, "TileIcon"), (title, "TileTitle"), (text, "TileText")):
+        badge = QLabel()
+        badge.setObjectName("TileBadge")
+        badge.setFixedSize(46, 46)
+        badge.setAlignment(Qt.AlignCenter)
+        badge.setPixmap(icons.pixmap(icon, style.ACCENT, 24, 1.8))
+        badge.setAttribute(Qt.WA_TransparentForMouseEvents)
+        lay.addWidget(badge)
+        lay.addSpacing(6)
+        for t, n in ((title, "TileTitle"), (text, "TileText")):
             lab = QLabel(t)
             lab.setObjectName(n)
             lab.setWordWrap(True)
@@ -103,9 +111,10 @@ PAGE_HOME, PAGE_EMBED, PAGE_EXTRACT, PAGE_ENCRYPT, PAGE_DECRYPT, PAGE_HISTORY, P
 class HomePage(Page):
     navigate = Signal(int)
 
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, ledger: Optional[Ledger] = None):
         greeting = f"Welcome back, {settings.owner_name.split()[0]}" if settings.owner_name else "Welcome to VeilMark"
         super().__init__(greeting, "What would you like to do?")
+        self.ledger = ledger
         self.setup_banner = Banner()
         self.add(self.setup_banner)
         if not settings.owner_name:
@@ -124,17 +133,50 @@ class HomePage(Page):
             self.add(grid)
 
         section("Watermark", [
-            ("✍️", "Embed a watermark", "Type your watermark text and hide it invisibly inside Word, PowerPoint, "
-                                       "Excel or picture files.", PAGE_EMBED),
-            ("🔍", "Extract a watermark", "Open any file to reveal the hidden watermark text and who the copy was "
-                                         "given to.", PAGE_EXTRACT),
+            ("embed", "Embed a watermark", "Type your watermark text and hide it invisibly inside Word, PowerPoint, "
+                                         "Excel or picture files.", PAGE_EMBED),
+            ("extract", "Extract a watermark", "Open any file to reveal the hidden watermark text and who the copy "
+                                               "was given to.", PAGE_EXTRACT),
         ])
         section("Encryption", [
-            ("🔒", "Encrypt files", "Lock any file with a password using the hyperchaotic thesis cipher.",
+            ("lock", "Encrypt files", "Lock any file with a password using the hyperchaotic thesis cipher.",
              PAGE_ENCRYPT),
-            ("🔓", "Decrypt files", "Unlock .vmk files with the password they were encrypted with.", PAGE_DECRYPT),
+            ("unlock", "Decrypt files", "Unlock .vmk files with the password they were encrypted with.",
+             PAGE_DECRYPT),
         ])
+        self.recent_card = Card("Recent watermarks")
+        self.recent_lay = QVBoxLayout()
+        self.recent_lay.setSpacing(2)
+        self.recent_card.add(self.recent_lay)
+        self.add(self.recent_card)
         self.finish()
+        self.refresh()
+
+    def refresh(self):
+        while self.recent_lay.count():
+            w = self.recent_lay.takeAt(0).widget()
+            if w:
+                w.deleteLater()
+        items = self.ledger.search("", limit=5) if self.ledger else []
+        self.recent_card.setVisible(bool(items))
+        for it in items:
+            row = QFrame()
+            row.setObjectName("RecentRow")
+            h = QHBoxLayout(row)
+            h.setContentsMargins(8, 6, 8, 6)
+            ic = QLabel()
+            ic.setPixmap(icons.pixmap("file", style.MUTED, 18))
+            h.addWidget(ic)
+            text = it.message or it.recipient or "—"
+            lab = QLabel(f"<b>{html.escape(Path(it.output_file).name)}</b>"
+                         f"<br><span style='color:{style.MUTED}'>“{html.escape(text)}” · {_fmt_time(it.timestamp)}"
+                         "</span>")
+            h.addWidget(lab, 1)
+            if Path(it.output_file).exists():
+                b = QPushButton("Show in folder")
+                b.clicked.connect(lambda _=False, p=Path(it.output_file): reveal_in_explorer(p))
+                h.addWidget(b)
+            self.recent_lay.addWidget(row)
 
 
 # =========================================================================== #
@@ -156,6 +198,8 @@ LAYER_OPTIONS = [
 
 
 class EmbedPage(Page):
+    check_file = Signal(object)  # ask the window to open Extract on a freshly watermarked copy
+
     def __init__(self, settings: Settings, ledger: Ledger):
         super().__init__("Embed a watermark",
                          "Write your watermark, choose the files, and VeilMark hides it inside them.")
@@ -170,6 +214,8 @@ class EmbedPage(Page):
         self.message.setPlaceholderText(f"e.g.  {default if len(default) > 7 else '© 2026 BookBeans'}"
                                         " – Confidential, do not distribute")
         self.message.setFixedHeight(84)
+        if settings.last_message:
+            self.message.setPlainText(settings.last_message)  # remembered from last time
         self.message.textChanged.connect(self._changed)
         text_card.add(self.message)
         self.count = label("", "Hint")
@@ -185,7 +231,7 @@ class EmbedPage(Page):
         # 2. files ----------------------------------------------------------
         files = Card("Choose the files", "2")
         self.drop = DropZone("Drag & drop files or folders here", "or click to browse  •  Word, PowerPoint, Excel, "
-                             "PNG/BMP pictures and text files", OFFICE_FILTER, icon="📂")
+                             "PNG/BMP pictures and text files", OFFICE_FILTER, icon="upload")
         self.drop.filesDropped.connect(self._add_files)
         files.add(self.drop)
         self.files = FileList()
@@ -367,19 +413,27 @@ class EmbedPage(Page):
                 text = (f"<b>{html.escape(res.output.name)}</b><br><span style='color:{style.MUTED}'>{kind}</span>")
                 lab = QLabel(text)
                 lab.setWordWrap(True)
-                row.addWidget(QLabel("✅"))
+                tick = QLabel()
+                tick.setPixmap(icons.pixmap("check", style.GOOD, 26, 2.0))
+                row.addWidget(tick)
                 row.addWidget(lab, 1)
                 b1 = QPushButton("Show in folder")
                 b1.clicked.connect(lambda _=False, p=res.output: reveal_in_explorer(p))
                 b2 = QPushButton("Open")
                 b2.clicked.connect(lambda _=False, p=res.output: open_path(p))
+                b3 = QPushButton("Check it")
+                b3.setToolTip("Open this copy in Extract to see the hidden watermark")
+                b3.clicked.connect(lambda _=False, p=res.output: self.check_file.emit(p))
                 row.addWidget(b1)
                 row.addWidget(b2)
+                row.addWidget(b3)
             else:
                 lab = QLabel(f"<b>{html.escape(src.name)}</b><br><span style='color:{style.BAD}'>"
                              f"{html.escape(err)}</span>")
                 lab.setWordWrap(True)
-                row.addWidget(QLabel("⚠️"))
+                warn = QLabel()
+                warn.setPixmap(icons.pixmap("alert", style.BAD, 26, 2.0))
+                row.addWidget(warn)
                 row.addWidget(lab, 1)
             self.results_lay.addWidget(card)
         if ok:
@@ -391,6 +445,15 @@ class EmbedPage(Page):
 # =========================================================================== #
 # Extract watermark
 # =========================================================================== #
+PLAIN_LAYER_NAMES = {
+    "Document properties": "In the file's properties (encrypted)",
+    "Custom XML part": "In a hidden data section of the file",
+    "Invisible text marks": "As invisible marks inside the text",
+    "Hidden data sheet": "In a hidden Excel sheet",
+    "Image pixels (LSB)": "Inside the pictures' pixels",
+}
+
+
 class ExtractPage(Page):
     def __init__(self, settings: Settings, ledger: Ledger):
         super().__init__("Extract a watermark",
@@ -400,7 +463,7 @@ class ExtractPage(Page):
 
         src = Card("Choose a file")
         self.drop = DropZone("Drop a file here", "or click to browse  •  Word, PowerPoint, Excel, pictures or "
-                             "text files", "All files (*.*)", multiple=False, icon="🔍")
+                             "text files", "All files (*.*)", multiple=False, icon="extract")
         self.drop.filesDropped.connect(lambda ps: self._trace_file(ps[0]))
         src.add(self.drop)
         paste_toggle = QPushButton("…or check text copied from an email, chat or website ▾")
@@ -468,17 +531,31 @@ class ExtractPage(Page):
         self.chain_card.hide()
         self.add(self.chain_card)
 
-        self.layers_card = Card("Where it was found",
-                                subtitle="The watermark is hidden in several places. Some may be lost when a file "
-                                         "is cleaned or converted — one is enough.")
+        self.layers_card = Card("Technical details")
+        self.layers_toggle = QPushButton("Show where the watermark was found ▾")
+        self.layers_toggle.setObjectName("Link")
+        self.layers_card.header.addWidget(self.layers_toggle)
+        self.layers_body = QWidget()
+        body = QVBoxLayout(self.layers_body)
+        body.setContentsMargins(0, 0, 0, 0)
+        body.addWidget(label("The watermark is hidden in several places at once. Some can be lost when a file "
+                             "is cleaned or converted — one is enough to read it.", "Muted"))
         self.layers_lay = QVBoxLayout()
-        self.layers_card.add(self.layers_lay)
+        body.addLayout(self.layers_lay)
         export = QPushButton("Save report…")
         export.clicked.connect(self._export)
-        self.layers_card.add(export)
+        body.addWidget(export, 0, Qt.AlignLeft)
+        self.layers_body.hide()
+        self.layers_card.add(self.layers_body)
+        self.layers_toggle.clicked.connect(self._toggle_layers)
         self.layers_card.hide()
         self.add(self.layers_card)
         self.finish()
+
+    def _toggle_layers(self):
+        on = not self.layers_body.isVisible()
+        self.layers_body.setVisible(on)
+        self.layers_toggle.setText("Hide details ▴" if on else "Show where the watermark was found ▾")
 
     def _start(self):
         self.busy.show()
@@ -560,11 +637,15 @@ class ExtractPage(Page):
             self.banner.show_message("bad", "Could not check this file", rep.headline)
 
         if rep.layer_status and rep.verdict != "error":
-            for name, ok, detail in rep.layer_status:
+            found = sum(1 for _n, ok, _d in rep.layer_status if ok)
+            self.layers_toggle.setText(f"Found in {found} of {len(rep.layer_status)} hiding places ▾"
+                                       if not self.layers_body.isVisible() else "Hide details ▴")
+            for name, ok, _detail in rep.layer_status:
                 colour = style.GOOD if ok else "#A3A7BA"
+                friendly = PLAIN_LAYER_NAMES.get(name, name)
                 txt = (f"<span style='color:{colour};font-weight:800'>{'✔' if ok else '—'}</span>&nbsp;&nbsp;"
-                       f"<b>{html.escape(name)}</b>&nbsp;&nbsp;<span style='color:{style.MUTED}'>"
-                       f"{html.escape(detail or ('found' if ok else 'not found'))}</span>")
+                       f"<b>{html.escape(friendly)}</b>&nbsp;&nbsp;<span style='color:{style.MUTED}'>"
+                       f"{'found' if ok else 'not found'}</span>")
                 self.layers_lay.addWidget(label(txt))
             self.layers_card.show()
         self.scroll_to(self.banner)
@@ -626,7 +707,7 @@ class _CryptoPage(Page):
         self.drop = DropZone("Drop files here" if enc else "Drop encrypted .vmk files here",
                              "or click to browse  •  any file type" if enc else "or click to browse",
                              "All files (*.*)" if enc else "Encrypted files (*.vmk);;All files (*.*)",
-                             icon="🔒" if enc else "🔓")
+                             icon="lock" if enc else "unlock")
         self.drop.filesDropped.connect(self._add)
         top.add(self.drop)
         self.files = FileList()
@@ -970,17 +1051,16 @@ class SettingsPage(Page):
         from PySide6.QtWidgets import QInputDialog
 
         text, ok = QInputDialog.getText(self, "Use a colleague's key",
-                                        "Paste the team key you were given.\n\nDocuments you protected with your "
-                                        "current key can only be traced with that key, so copy it somewhere "
-                                        "safe first.")
+                                        "Paste the team key you were given.\n\nYour current key is kept, so files "
+                                        "you watermarked before can still be extracted on this computer.")
         if not ok or not text.strip():
             return
         try:
-            self.settings.team_key = parse_key(text)
+            new_key = parse_key(text)
         except Exception:  # noqa: BLE001
             QMessageBox.warning(self, "Invalid key", "That doesn't look like a VeilMark team key.")
             return
-        self.settings.save()
+        self.settings.set_team_key(new_key, "colleague's key")
         self._show_key(self.reveal.isChecked())
         self.saved.setText("Team key updated ✔")
 
@@ -988,11 +1068,11 @@ class SettingsPage(Page):
         from ..settings import _new_key
 
         if QMessageBox.question(self, "Generate a new key?",
-                                "Documents protected with the current key can no longer be read or traced "
-                                "unless you keep a copy of it.\n\nGenerate a new key anyway?") != QMessageBox.Yes:
+                                "New watermarks will use the new key. Your current key is kept on this computer, "
+                                "so older files still extract here — but colleagues will need the new key.\n\n"
+                                "Generate a new key?") != QMessageBox.Yes:
             return
-        self.settings.team_key = _new_key()
-        self.settings.save()
+        self.settings.set_team_key(_new_key(), "generated")
         self._show_key(self.reveal.isChecked())
         self.saved.setText("New team key generated ✔")
 

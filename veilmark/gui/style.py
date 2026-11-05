@@ -25,7 +25,7 @@ QToolTip {{ background: {TEXT}; color: white; border: none; padding: 6px 8px; bo
 #Brand {{ color: white; font-size: 17pt; font-weight: 700; padding: 22px 20px 2px 22px; }}
 #BrandSub {{ color: #A9A5D6; font-size: 9pt; padding: 0 20px 18px 22px; }}
 #NavList {{ background: transparent; border: none; outline: none; }}
-#NavList::item {{ color: #CFCDEB; padding: 12px 18px; margin: 2px 12px; border-radius: 10px; }}
+#NavList::item {{ color: #CFCDEB; padding: 11px 14px; margin: 2px 12px; border-radius: 10px; }}
 #NavList::item:hover {{ background: #2C2852; color: white; }}
 #NavList::item:selected {{ background: {ACCENT}; color: white; }}
 #NavList::item:disabled {{ color: #7F7BAE; padding: 14px 18px 2px 18px; background: transparent; }}
@@ -99,6 +99,9 @@ QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; }}
 
 #HomeTile {{ background: {CARD}; border: 1px solid {BORDER}; border-radius: 16px; }}
 #HomeTile:hover {{ border: 1.5px solid {ACCENT}; }}
+#TileBadge {{ background: {ACCENT_SOFT}; border-radius: 12px; }}
+#RecentRow {{ border-radius: 8px; }}
+#RecentRow:hover {{ background: #F6F6FC; }}
 #TileIcon {{ font-size: 26pt; background: transparent; }}
 #TileTitle {{ font-size: 13pt; font-weight: 700; background: transparent; }}
 #TileText {{ color: {MUTED}; background: transparent; }}

@@ -119,7 +119,7 @@ class Card(QFrame):
 class Banner(QFrame):
     """Coloured message box; kind = good | warn | bad | info."""
 
-    ICONS = {"good": "✔", "warn": "!", "bad": "✖", "info": "i"}
+    ICONS = {"good": "check", "warn": "alert", "bad": "cross", "info": "info"}
 
     def __init__(self):
         super().__init__()
@@ -145,8 +145,10 @@ class Banner(QFrame):
 
         colour = {"good": style.GOOD, "warn": style.WARN, "bad": style.BAD, "info": style.ACCENT}[kind]
         self.setProperty("kind", kind)
-        self.icon.setText(self.ICONS[kind])
-        self.icon.setStyleSheet(f"background:{colour};color:white;border-radius:17px;font-weight:800;font-size:13pt;")
+        from . import icons
+
+        self.icon.setPixmap(icons.pixmap(self.ICONS[kind], colour, 30, 2.0))
+        self.icon.setStyleSheet("background: transparent;")
         self.title.setText(title)
         self.text.setText(text)
         self.text.setVisible(bool(text))
@@ -174,8 +176,14 @@ class DropZone(QFrame):
         lay = QVBoxLayout(self)
         lay.setAlignment(Qt.AlignCenter)
         lay.setSpacing(4)
+        from . import icons, style
+
         for txt, name in ((icon, "DropIcon"), (text, "DropText"), (hint, "Hint")):
-            lab = QLabel(txt)
+            lab = QLabel()
+            if name == "DropIcon" and txt in icons.names():
+                lab.setPixmap(icons.pixmap(txt, style.ACCENT, 34, 1.6))
+            else:
+                lab.setText(txt)
             lab.setObjectName(name)
             lab.setAlignment(Qt.AlignCenter)
             lab.setAttribute(Qt.WA_TransparentForMouseEvents)
@@ -270,7 +278,8 @@ class FileList(QWidget):
     def _refresh(self):
         self.list.clear()
         for p in self._paths:
-            item = QListWidgetItem(f"{_icon_for(p)}  {p.name}")
+            item = QListWidgetItem(p.name)
+            item.setIcon(_file_icon(p))
             item.setToolTip(str(p))
             self.list.addItem(item)
         n = len(self._paths)
@@ -278,6 +287,13 @@ class FileList(QWidget):
         self.count.setText(f"{n} file{'s' if n != 1 else ''} selected" if n else "No files yet")
         self.setVisible(bool(n))
         self.changed.emit()
+
+
+def _file_icon(p: Path):
+    from . import icons
+
+    colour = {".do": "#2B579A", ".pp": "#C43E1C", ".xl": "#217346"}.get(p.suffix.lower()[:3], "#6B7086")
+    return icons.icon("lock" if p.suffix.lower() == ".vmk" else "file", colour, size=18)
 
 
 def _icon_for(p: Path) -> str:

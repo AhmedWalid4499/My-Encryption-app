@@ -162,8 +162,9 @@ def test_wrong_team_key_reports_foreign(env, monkeypatch):
     src = tmp / "x.docx"
     make_docx(src)
     out = protect_file(src, "Heidi", settings=s, ledger=ledger).output
-    other = Settings()
-    rep = trace_file(out, settings=other, ledger=ledger)
+    monkeypatch.setenv("VEILMARK_HOME", str(tmp / "other-pc"))  # another team's computer
+    other = Settings.load()
+    rep = trace_file(out, settings=other, ledger=Ledger())
     assert rep.verdict == "foreign" and not rep.chain
 
 

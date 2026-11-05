@@ -103,6 +103,17 @@ Drop any file onto **Extract watermark**, or paste text copied from an email, we
 
 You can save the result as an HTML report.
 
+### Updates never make VeilMark forget
+* Your settings, team key and History live in `%APPDATA%\VeilMark`. The installer never touches that folder, so
+  updates keep everything.
+* Every team key ever used on your PC is kept in `keyring.json`. If you generate a new key or switch to a
+  colleague's key, files watermarked with the old key **still extract** on your PC.
+* If the settings file is ever damaged or locked, VeilMark restores it from `settings.backup.json` or the keyring.
+  It never silently creates a new key (the damaged file is kept aside as `settings.damaged-….json`).
+* Your last watermark text is remembered and pre-filled on the Embed page.
+* `tests/fixtures` holds real files made by every released version (1.1.0, 1.2.1, …). Every build must still
+  extract and decrypt them, so no update can break old watermarks.
+
 ### Working as a team
 Watermarks are sealed with your **team key** (Settings → Team watermark key). Give colleagues the same key
 (**Copy**, then on their PC **Use a colleague's key…**) so everyone can trace each other's documents. A file
@@ -212,7 +223,7 @@ veilmark/
   service.py           protect_file / trace_file used by GUI and CLI
   gui/                 PySide6 (Qt) desktop interface
   cli.py               command line
-tests/                 72 tests incl. LibreOffice re-save, Inspect-Document, slide-copy, multi-hop, cross-PC vectors
+tests/                 93 tests incl. LibreOffice re-save, Inspect-Document, slide-copy, multi-hop, cross-PC vectors
 packaging/             PyInstaller spec, Inno Setup installer script, Windows version info
 ```
 

@@ -92,7 +92,11 @@ def protect_file(src, recipient: str = "", note: str = "", *, message: str = "",
         raise ValueError("Please type the watermark text.")
     data = read_bytes(src)
     key = settings.key_bytes
-    record = read_existing_record(data, src.name, key)
+    record = None
+    for k in settings.all_key_bytes:  # also continue the history of files marked with an older key
+        record = read_existing_record(data, src.name, k)
+        if record:
+            break
     reshared = record is not None
     parent = record.chain[-1].hop_id if record and record.chain else None
     if record is None:
@@ -110,6 +114,12 @@ def protect_file(src, recipient: str = "", note: str = "", *, message: str = "",
     out = _unique(out_dir / output_name(src, recipient, reshared, settings))
     write_bytes(out, out_bytes)
 
+    if message and settings.last_message != message:
+        settings.last_message = message
+        try:
+            settings.save()
+        except OSError:
+            pass
     (ledger or Ledger()).add(Issue(hop.hop_id, record.doc_id, parent, recipient, note, record.owner,
                                    settings.owner_name, str(src), str(out), hop.timestamp, message))
     return ProtectResult(src, out, record, report, reshared)
@@ -175,14 +185,28 @@ def build_report(name: str, result: TraceResult, ledger: Optional[Ledger] = None
     return rep
 
 
+def _best_result(run, settings: Settings) -> TraceResult:
+    """Try the current team key, then every older key on this computer's keyring."""
+    first = None
+    for key in settings.all_key_bytes:
+        result = run(key)
+        if first is None:
+            first = result
+        if result.error or not result.found_anything:
+            return result  # nothing to decode - other keys won't change that
+        if result.authentic:
+            return result
+    return first
+
+
 def trace_file(path, *, settings: Settings, ledger: Optional[Ledger] = None) -> TraceReport:
     path = Path(path)
-    result = trace_bytes(read_bytes(path), path.name, settings.key_bytes)
-    return build_report(path.name, result, ledger)
+    data = read_bytes(path)
+    return build_report(path.name, _best_result(lambda k: trace_bytes(data, path.name, k), settings), ledger)
 
 
 def trace_pasted_text(text: str, *, settings: Settings, ledger: Optional[Ledger] = None) -> TraceReport:
-    return build_report("Pasted text", trace_text(text, settings.key_bytes), ledger)
+    return build_report("Pasted text", _best_result(lambda k: trace_text(text, k), settings), ledger)
 
 
 __all__ = ["protect_file", "embed_watermark", "trace_file", "trace_pasted_text", "TraceReport", "ProtectResult", "now_iso"]

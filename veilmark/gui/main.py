@@ -13,16 +13,16 @@ from PySide6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel, QListW
 from .. import APP_NAME, __version__
 from ..registry import Ledger
 from ..settings import Settings
-from . import style
+from . import icons, style
 from .updates import UpdateController
-from .pages import (PAGE_HISTORY, DecryptPage, EmbedPage, EncryptPage, ExtractPage, HistoryPage, HomePage,
+from .pages import (PAGE_EXTRACT, PAGE_HISTORY, PAGE_HOME, DecryptPage, EmbedPage, EncryptPage, ExtractPage, HistoryPage, HomePage,
                     SettingsPage)
 
 # (icon, label, section header shown above the item)
-NAV = [("🏠", "Home", None),
-       ("✍️", "Embed watermark", "WATERMARK"), ("🔍", "Extract watermark", None),
-       ("🔒", "Encrypt", "ENCRYPTION"), ("🔓", "Decrypt", None),
-       ("🕘", "History", "MORE"), ("⚙️", "Settings", None)]
+NAV = [("home", "Home", None),
+       ("embed", "Embed watermark", "WATERMARK"), ("extract", "Extract watermark", None),
+       ("lock", "Encrypt", "ENCRYPTION"), ("unlock", "Decrypt", None),
+       ("history", "History", "MORE"), ("settings", "Settings", None)]
 
 
 def resource(name: str) -> Path:
@@ -71,7 +71,8 @@ class MainWindow(QMainWindow):
                 f.setBold(True)
                 head.setFont(f)
                 self._nav_rows.append(None)
-            QListWidgetItem(f"{icon}   {text}", self.nav)
+            item = QListWidgetItem(f"  {text}", self.nav)
+            item.setIcon(icons.icon(icon, "#CFCDEB", "#FFFFFF", size=18))
             self._nav_rows.append(page)
         self.nav.setCursor(Qt.PointingHandCursor)
         sl.addWidget(self.nav, 1)
@@ -101,9 +102,10 @@ class MainWindow(QMainWindow):
             w = self.stack.widget(0)
             self.stack.removeWidget(w)
             w.deleteLater()
-        self.home = HomePage(self.settings)
+        self.home = HomePage(self.settings, self.ledger)
         self.home.navigate.connect(self.open_page)
         self.embed = EmbedPage(self.settings, self.ledger)
+        self.embed.check_file.connect(self.check_file)
         self.extract = ExtractPage(self.settings, self.ledger)
         self.encrypt = EncryptPage(self.settings)
         self.decrypt = DecryptPage(self.settings)
@@ -117,7 +119,7 @@ class MainWindow(QMainWindow):
         idx = self.stack.indexOf(self.home)
         self.stack.removeWidget(self.home)
         self.home.deleteLater()
-        self.home = HomePage(self.settings)
+        self.home = HomePage(self.settings, self.ledger)
         self.home.navigate.connect(self.open_page)
         self.stack.insertWidget(idx, self.home)
 
@@ -134,6 +136,11 @@ class MainWindow(QMainWindow):
         elif state != "checking":
             self.update_pill.hide()
 
+    def check_file(self, path):
+        """Embed page -> "Check it": show the new copy's watermark on the Extract page."""
+        self.open_page(PAGE_EXTRACT)
+        self.extract._trace_file(path)
+
     def open_page(self, page: int):
         self.nav.setCurrentRow(self._nav_rows.index(page))
 
@@ -143,6 +150,8 @@ class MainWindow(QMainWindow):
             return
         if page == PAGE_HISTORY:
             self.history.refresh()
+        elif page == PAGE_HOME:
+            self.home.refresh()
         self.stack.setCurrentIndex(page)
 
 
