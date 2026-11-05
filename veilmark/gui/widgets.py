@@ -42,6 +42,12 @@ class Worker(QRunnable):
             self.signals.done.emit(result)
 
 
+# Workers that are still running. Without a reference here, Python garbage-collects the Worker (and
+# the signals object it owns) as soon as the caller drops it - and the job's result is silently lost,
+# leaving the screen stuck on "Checking…" / a spinning progress bar.
+_ACTIVE: set = set()
+
+
 def run_in_background(fn, on_done=None, on_failed=None, on_progress=None) -> Worker:
     w = Worker(fn)
     if on_done:
@@ -50,6 +56,10 @@ def run_in_background(fn, on_done=None, on_failed=None, on_progress=None) -> Wor
         w.signals.failed.connect(on_failed)
     if on_progress:
         w.signals.progress.connect(on_progress)
+    # connected last, so the caller's handlers have run before the worker is released
+    w.signals.done.connect(lambda _r, w=w: _ACTIVE.discard(w))
+    w.signals.failed.connect(lambda _e, w=w: _ACTIVE.discard(w))
+    _ACTIVE.add(w)
     QThreadPool.globalInstance().start(w)
     return w
 

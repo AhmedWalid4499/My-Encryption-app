@@ -2,7 +2,7 @@
 ; Usage (from the repository root):  iscc packaging\installer.iss
 #define AppName "VeilMark"
 #ifndef AppVersion
-  #define AppVersion "1.2.1"
+  #define AppVersion "1.2.2"
 #endif
 
 [Setup]

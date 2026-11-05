@@ -39,6 +39,18 @@ SCRIPT = textwrap.dedent("""
           and w.encrypt.ENCRYPT and not w.decrypt.ENCRYPT
           and password_strength("")[0] == 0 and password_strength("Sakura#Slice-2027")[0] >= 4
           and w.embed.footer_cb is not None and w.updates.state == "idle")
+    # a background job whose Worker reference is dropped must still deliver its result
+    import gc, time
+    from veilmark.gui.widgets import run_in_background
+    got = []
+    run_in_background(lambda _p: (time.sleep(0.5), "done")[1], got.append, lambda e: got.append("ERR " + e))
+    gc.collect()
+    for _ in range(40):
+        QThreadPool.globalInstance().waitForDone(100)
+        app.processEvents()
+        if got:
+            break
+    ok = ok and got == ["done"]
     QThreadPool.globalInstance().waitForDone(5000)
     w.close()
     w.deleteLater()
