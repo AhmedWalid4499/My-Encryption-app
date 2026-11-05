@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
+from .fileio import read_bytes, write_bytes
 from .registry import Issue, Ledger
 from .settings import Settings
 from .watermark import EmbedOptions, EmbedReport, Record, TraceResult, protect_bytes, read_existing_record, trace_bytes, trace_text
@@ -89,7 +90,7 @@ def protect_file(src, recipient: str = "", note: str = "", *, message: str = "",
     recipient, message = recipient.strip(), message.strip()
     if not recipient and not message:
         raise ValueError("Please type the watermark text.")
-    data = src.read_bytes()
+    data = read_bytes(src)
     key = settings.key_bytes
     record = read_existing_record(data, src.name, key)
     reshared = record is not None
@@ -107,7 +108,7 @@ def protect_file(src, recipient: str = "", note: str = "", *, message: str = "",
     out_dir = Path(output_dir or settings.output_folder or src.parent)
     out_dir.mkdir(parents=True, exist_ok=True)
     out = _unique(out_dir / output_name(src, recipient, reshared, settings))
-    out.write_bytes(out_bytes)
+    write_bytes(out, out_bytes)
 
     (ledger or Ledger()).add(Issue(hop.hop_id, record.doc_id, parent, recipient, note, record.owner,
                                    settings.owner_name, str(src), str(out), hop.timestamp, message))
@@ -176,7 +177,7 @@ def build_report(name: str, result: TraceResult, ledger: Optional[Ledger] = None
 
 def trace_file(path, *, settings: Settings, ledger: Optional[Ledger] = None) -> TraceReport:
     path = Path(path)
-    result = trace_bytes(path.read_bytes(), path.name, settings.key_bytes)
+    result = trace_bytes(read_bytes(path), path.name, settings.key_bytes)
     return build_report(path.name, result, ledger)
 
 

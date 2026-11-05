@@ -34,6 +34,7 @@ from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.exceptions import InvalidTag
 
+from ..fileio import read_bytes, write_bytes
 from .chaos import HyperChen4D, Hyper5D, MersenneStream
 from .sboxes import INV_SBOXES, SBOXES
 
@@ -210,20 +211,21 @@ def _unique(path: Path) -> Path:
 def encrypt_file(src, password: str, dest_dir=None, *, aes_armour: bool = True,
                  progress: Progress = None) -> Path:
     src = Path(src)
-    meta = {"name": src.name, "size": src.stat().st_size, "encrypted": int(time.time())}
-    blob = encrypt_bytes(src.read_bytes(), password, aes_armour=aes_armour,
+    plain = read_bytes(src)
+    meta = {"name": src.name, "size": len(plain), "encrypted": int(time.time())}
+    blob = encrypt_bytes(plain, password, aes_armour=aes_armour,
                          metadata=meta, progress=progress)
     out = _unique(Path(dest_dir or src.parent) / (src.name + EXTENSION))
-    out.write_bytes(blob)
+    write_bytes(out, blob)
     return out
 
 
 def decrypt_file(src, password: str, dest_dir=None, progress: Progress = None) -> Path:
     src = Path(src)
-    data, meta = decrypt_bytes(src.read_bytes(), password, progress)
+    data, meta = decrypt_bytes(read_bytes(src), password, progress)
     name = Path(meta.get("name") or src.stem).name  # never trust a path from the file
     if src.suffix.lower() == EXTENSION and not meta.get("name"):
         name = src.stem
     out = _unique(Path(dest_dir or src.parent) / name)
-    out.write_bytes(data)
+    write_bytes(out, data)
     return out
