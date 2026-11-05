@@ -28,6 +28,7 @@ QToolTip {{ background: {TEXT}; color: white; border: none; padding: 6px 8px; bo
 #NavList::item {{ color: #CFCDEB; padding: 12px 18px; margin: 2px 12px; border-radius: 10px; }}
 #NavList::item:hover {{ background: #2C2852; color: white; }}
 #NavList::item:selected {{ background: {ACCENT}; color: white; }}
+#NavList::item:disabled {{ color: #7F7BAE; padding: 14px 18px 2px 18px; background: transparent; }}
 #UpdatePill {{ background: #2E2A5C; color: white; border: 1px solid #5B4FE0; border-radius: 10px;
     padding: 10px 12px; text-align: left; font-weight: 600; }}
 #UpdatePill:hover {{ background: {ACCENT}; color: white; }}
@@ -101,6 +102,9 @@ QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; }}
 #TileIcon {{ font-size: 26pt; background: transparent; }}
 #TileTitle {{ font-size: 13pt; font-weight: 700; background: transparent; }}
 #TileText {{ color: {MUTED}; background: transparent; }}
+#WatermarkEdit {{ font-size: 12pt; }}
+#WatermarkResult {{ font-size: 16pt; font-weight: 700; color: {ACCENT_DARK}; background: {ACCENT_SOFT};
+    border-radius: 10px; padding: 14px 16px; }}
 #KeyLabel {{ font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace; font-size: 10.5pt;
     background: #F3F3FA; border-radius: 8px; padding: 10px; }}
 """

@@ -26,12 +26,18 @@ SCRIPT = textwrap.dedent("""
 
     app = QApplication([])
     w = MainWindow()
-    for i in range(w.nav.count()):
-        w.nav.setCurrentRow(i)
+    seen = []
+    for page in range(w.stack.count()):
+        w.open_page(page)
         app.processEvents()
-    ok = (w.stack.currentIndex() == w.nav.count() - 1
+        seen.append(w.stack.currentIndex())
+    # section headers in the sidebar must not change the page
+    w.open_page(1)
+    w.nav.setCurrentRow(1 if w._nav_rows[1] is None else 0)
+    ok = (seen == list(range(w.stack.count())) and w.stack.count() == 7
+          and w.encrypt.ENCRYPT and not w.decrypt.ENCRYPT
           and password_strength("")[0] == 0 and password_strength("Sakura#Slice-2027")[0] >= 4
-          and w.protect.footer_cb is not None and w.updates.state == "idle")
+          and w.embed.footer_cb is not None and w.updates.state == "idle")
     QThreadPool.globalInstance().waitForDone(5000)
     sys.stdout.write("GUI-OK\\n" if ok else "GUI-FAIL\\n")
     sys.stdout.flush()

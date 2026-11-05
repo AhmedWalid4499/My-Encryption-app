@@ -86,6 +86,7 @@ class Hop:
     note: str = ""
     issued_by: str = ""
     timestamp: str = field(default_factory=now_iso)
+    message: str = ""  # the watermark text the user typed for this copy
 
 
 @dataclass
@@ -97,13 +98,23 @@ class Record:
     created: str = field(default_factory=now_iso)
     chain: List[Hop] = field(default_factory=list)
     version: int = 1
+    message: str = ""  # watermark text of the first embed
 
     @staticmethod
-    def new(owner: str, organization: str = "", title: str = "") -> "Record":
-        return Record(doc_id=os.urandom(6).hex(), owner=owner, organization=organization, title=title)
+    def new(owner: str, organization: str = "", title: str = "", message: str = "") -> "Record":
+        return Record(doc_id=os.urandom(6).hex(), owner=owner, organization=organization, title=title,
+                      message=message)
 
-    def add_hop(self, recipient: str, note: str = "", issued_by: str = "") -> Hop:
-        hop = Hop(hop_id=os.urandom(4).hex(), recipient=recipient, note=note, issued_by=issued_by)
+    @property
+    def latest_message(self) -> str:
+        for hop in reversed(self.chain):
+            if hop.message:
+                return hop.message
+        return self.message
+
+    def add_hop(self, recipient: str, note: str = "", issued_by: str = "", message: str = "") -> Hop:
+        hop = Hop(hop_id=os.urandom(4).hex(), recipient=recipient, note=note, issued_by=issued_by,
+                  message=message)
         self.chain.append(hop)
         return hop
 
@@ -118,8 +129,10 @@ class Record:
     @staticmethod
     def from_json(raw: bytes) -> "Record":
         data = json.loads(raw)
-        data["chain"] = [Hop(**h) for h in data.get("chain", [])]
-        return Record(**data)
+        hop_fields, rec_fields = Hop.__dataclass_fields__, Record.__dataclass_fields__
+        # ignore unknown keys so records written by newer versions still open
+        data["chain"] = [Hop(**{k: v for k, v in h.items() if k in hop_fields}) for h in data.get("chain", [])]
+        return Record(**{k: v for k, v in data.items() if k in rec_fields})
 
     def seal(self, key: bytes) -> bytes:
         """compress + AES-256-GCM. Output: b'VR1' | nonce(12) | ciphertext+tag."""

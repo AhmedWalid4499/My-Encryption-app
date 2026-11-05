@@ -15,10 +15,14 @@ from ..registry import Ledger
 from ..settings import Settings
 from . import style
 from .updates import UpdateController
-from .pages import EncryptPage, HistoryPage, HomePage, ProtectPage, SettingsPage, TracePage
+from .pages import (PAGE_HISTORY, DecryptPage, EmbedPage, EncryptPage, ExtractPage, HistoryPage, HomePage,
+                    SettingsPage)
 
-NAV = [("🏠", "Home"), ("🛡️", "Protect"), ("🔍", "Trace a leak"), ("🔐", "Encrypt"), ("🕘", "History"),
-       ("⚙️", "Settings")]
+# (icon, label, section header shown above the item)
+NAV = [("🏠", "Home", None),
+       ("✍️", "Embed watermark", "WATERMARK"), ("🔍", "Extract watermark", None),
+       ("🔒", "Encrypt", "ENCRYPTION"), ("🔓", "Decrypt", None),
+       ("🕘", "History", "MORE"), ("⚙️", "Settings", None)]
 
 
 def resource(name: str) -> Path:
@@ -56,8 +60,19 @@ class MainWindow(QMainWindow):
         self.nav = QListWidget()
         self.nav.setObjectName("NavList")
         self.nav.setIconSize(QSize(18, 18))
-        for icon, text in NAV:
+        self._nav_rows = []  # list row -> page index (section headers are not pages)
+        for page, (icon, text, section) in enumerate(NAV):
+            if section:
+                head = QListWidgetItem(section, self.nav)
+                head.setFlags(Qt.NoItemFlags)
+                head.setData(Qt.UserRole, "section")
+                f = head.font()
+                f.setPointSizeF(8)
+                f.setBold(True)
+                head.setFont(f)
+                self._nav_rows.append(None)
             QListWidgetItem(f"{icon}   {text}", self.nav)
+            self._nav_rows.append(page)
         self.nav.setCursor(Qt.PointingHandCursor)
         sl.addWidget(self.nav, 1)
         self.update_pill = QPushButton()
@@ -87,14 +102,15 @@ class MainWindow(QMainWindow):
             self.stack.removeWidget(w)
             w.deleteLater()
         self.home = HomePage(self.settings)
-        self.home.navigate.connect(self.nav.setCurrentRow)
-        self.protect = ProtectPage(self.settings, self.ledger)
-        self.trace = TracePage(self.settings, self.ledger)
+        self.home.navigate.connect(self.open_page)
+        self.embed = EmbedPage(self.settings, self.ledger)
+        self.extract = ExtractPage(self.settings, self.ledger)
         self.encrypt = EncryptPage(self.settings)
+        self.decrypt = DecryptPage(self.settings)
         self.history = HistoryPage(self.ledger)
         self.settings_page = SettingsPage(self.settings, self.updates)
         self.settings_page.changed.connect(self._settings_changed)
-        for p in (self.home, self.protect, self.trace, self.encrypt, self.history, self.settings_page):
+        for p in (self.home, self.embed, self.extract, self.encrypt, self.decrypt, self.history, self.settings_page):
             self.stack.addWidget(p)
 
     def _settings_changed(self):
@@ -102,7 +118,7 @@ class MainWindow(QMainWindow):
         self.stack.removeWidget(self.home)
         self.home.deleteLater()
         self.home = HomePage(self.settings)
-        self.home.navigate.connect(self.nav.setCurrentRow)
+        self.home.navigate.connect(self.open_page)
         self.stack.insertWidget(idx, self.home)
 
     def _update_state(self, state: str, text: str):
@@ -118,10 +134,16 @@ class MainWindow(QMainWindow):
         elif state != "checking":
             self.update_pill.hide()
 
+    def open_page(self, page: int):
+        self.nav.setCurrentRow(self._nav_rows.index(page))
+
     def _go(self, row: int):
-        if row == 4:
+        page = self._nav_rows[row] if 0 <= row < len(self._nav_rows) else None
+        if page is None:
+            return
+        if page == PAGE_HISTORY:
             self.history.refresh()
-        self.stack.setCurrentIndex(row)
+        self.stack.setCurrentIndex(page)
 
 
 def main() -> int:

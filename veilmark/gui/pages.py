@@ -9,13 +9,13 @@ from typing import List, Optional
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QCheckBox, QCompleter, QFileDialog, QFrame,
+from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QCompleter, QFileDialog, QFrame,
                                QGridLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMessageBox,
                                QPlainTextEdit, QProgressBar, QPushButton, QScrollArea, QTableWidget,
                                QTableWidgetItem, QVBoxLayout, QWidget)
 
 from .. import __version__
-from ..crypto import DecryptionError, decrypt_file, encrypt_file, is_encrypted_file
+from ..crypto import decrypt_file, encrypt_file, is_encrypted_file
 from ..registry import Ledger
 from ..service import TraceReport, protect_file, trace_file, trace_pasted_text
 from ..settings import Settings, format_key, parse_key
@@ -80,7 +80,7 @@ class HomeTile(QFrame):
         super().__init__()
         self.setObjectName("HomeTile")
         self.setCursor(Qt.PointingHandCursor)
-        self.setMinimumHeight(170)
+        self.setMinimumHeight(150)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(22, 20, 22, 20)
         for t, n in ((icon, "TileIcon"), (title, "TileTitle"), (text, "TileText")):
@@ -96,62 +96,58 @@ class HomeTile(QFrame):
             self.clicked.emit()
 
 
+# sidebar / stack order (also used by the Home tiles)
+PAGE_HOME, PAGE_EMBED, PAGE_EXTRACT, PAGE_ENCRYPT, PAGE_DECRYPT, PAGE_HISTORY, PAGE_SETTINGS = range(7)
+
+
 class HomePage(Page):
     navigate = Signal(int)
 
     def __init__(self, settings: Settings):
         greeting = f"Welcome back, {settings.owner_name.split()[0]}" if settings.owner_name else "Welcome to VeilMark"
-        super().__init__(greeting, "Protect your documents with invisible, traceable watermarks — "
-                                   "and lock files with chaotic encryption.")
+        super().__init__(greeting, "What would you like to do?")
         self.setup_banner = Banner()
         self.add(self.setup_banner)
         if not settings.owner_name:
             self.setup_banner.show_message(
                 "info", "One quick thing first",
-                "Add your name in Settings so every protected document records you as its owner.")
-        grid = QGridLayout()
-        grid.setSpacing(16)
-        tiles = [
-            ("🛡️", "Protect a document", "Hide an invisible watermark in Word, PowerPoint or Excel files before "
-                                        "you share them. Each recipient gets a uniquely marked copy.", 1),
-            ("🔍", "Trace a leak", "Found your file somewhere it shouldn't be? Drop it in to see who it was "
-                                  "issued to — even after it was forwarded several times.", 2),
-            ("🔐", "Encrypt or decrypt", "Lock any file with the hyperchaotic cipher (Chen 4-D, 5-D system, "
-                                        "S-boxes) plus AES-256 armour.", 3),
-            ("🕘", "Sharing history", "See every protected copy you've handed out, search it and export it "
-                                     "to Excel.", 4),
-        ]
-        for i, (icon, title, text, page) in enumerate(tiles):
-            tile = HomeTile(icon, title, text)
-            tile.clicked.connect(lambda p=page: self.navigate.emit(p))
-            grid.addWidget(tile, i // 2, i % 2)
-        self.add(grid)
+                "Add your name in Settings so every watermark records you as the owner.")
 
-        how = Card("How the protection works")
-        how.add(label(
-            "VeilMark hides the same mark in up to five places at once, so it survives being opened, edited, "
-            "re-saved, forwarded and even partly cleaned:\n"
-            "  •  Encrypted document properties and a hidden custom-XML part (full owner + recipient history)\n"
-            "  •  Invisible zero-width characters inside the text — survive copy & paste into other files\n"
-            "  •  Pixel-level (LSB) marks in pictures — the method from the original thesis\n"
-            "  •  A ‘very hidden’ data sheet in Excel workbooks\n"
-            "Each time a protected file is re-shared through VeilMark, a new link is added to its chain of "
-            "custody, so a leaked copy points at the last person who received it.", "Muted"))
-        self.add(how)
+        def section(title, tiles):
+            self.add(label(title, "CardTitle"))
+            grid = QGridLayout()
+            grid.setSpacing(16)
+            for i, (icon, name, text, page) in enumerate(tiles):
+                tile = HomeTile(icon, name, text)
+                tile.clicked.connect(lambda p=page: self.navigate.emit(p))
+                grid.addWidget(tile, 0, i)
+            self.add(grid)
+
+        section("Watermark", [
+            ("✍️", "Embed a watermark", "Type your watermark text and hide it invisibly inside Word, PowerPoint, "
+                                       "Excel or picture files.", PAGE_EMBED),
+            ("🔍", "Extract a watermark", "Open any file to reveal the hidden watermark text and who the copy was "
+                                         "given to.", PAGE_EXTRACT),
+        ])
+        section("Encryption", [
+            ("🔒", "Encrypt files", "Lock any file with a password using the hyperchaotic thesis cipher.",
+             PAGE_ENCRYPT),
+            ("🔓", "Decrypt files", "Unlock .vmk files with the password they were encrypted with.", PAGE_DECRYPT),
+        ])
         self.finish()
 
 
 # =========================================================================== #
-# Protect
+# Embed watermark
 # =========================================================================== #
 LAYER_OPTIONS = [
-    ("properties", "Encrypted document properties", "Stores the full, encrypted owner & recipient history."),
+    ("properties", "Encrypted document properties", "Stores the full, encrypted watermark & history."),
     ("custom_xml", "Hidden custom XML part", "A second encrypted copy in a hidden data part of the file."),
     ("invisible_text", "Invisible text marks", "Zero-width characters in the text. Survive copy & paste, "
                                                "‘Inspect Document’ and copying slides into other decks."),
     ("hidden_sheet", "Hidden data sheet (Excel)", "A ‘very hidden’ worksheet that can't be unhidden from the "
                                                   "normal Excel menu."),
-    ("images", "Picture pixels (LSB)", "Hides the mark in the least significant bits of PNG/BMP pictures, "
+    ("images", "Picture pixels (LSB)", "Hides the watermark in the least significant bits of PNG/BMP pictures, "
                                        "like the original thesis. Lost if pictures are compressed to JPEG."),
     ("excel_cell_text", "Also mark Excel cell text (advanced)", "Adds invisible marks to long text cells. "
                                                                 "Can affect formulas that compare text - "
@@ -159,13 +155,35 @@ LAYER_OPTIONS = [
 ]
 
 
-class ProtectPage(Page):
+class EmbedPage(Page):
     def __init__(self, settings: Settings, ledger: Ledger):
-        super().__init__("Protect documents",
-                         "Create a uniquely watermarked copy for each person you share with.")
+        super().__init__("Embed a watermark",
+                         "Write your watermark, choose the files, and VeilMark hides it inside them.")
         self.settings, self.ledger = settings, ledger
 
-        files = Card("Choose the documents", "1")
+        # 1. watermark text -------------------------------------------------
+        text_card = Card("Write your watermark", "1",
+                         "This text is hidden invisibly inside the file. Use Extract to read it back later.")
+        self.message = QPlainTextEdit()
+        self.message.setObjectName("WatermarkEdit")
+        default = f"© {dt.date.today().year} {settings.organization or settings.owner_name}".strip()
+        self.message.setPlaceholderText(f"e.g.  {default if len(default) > 7 else '© 2026 BookBeans'}"
+                                        " – Confidential, do not distribute")
+        self.message.setFixedHeight(84)
+        self.message.textChanged.connect(self._changed)
+        text_card.add(self.message)
+        self.count = label("", "Hint")
+        text_card.add(self.count)
+        self.footer_cb = QCheckBox("Also show this text visibly as a footer on every page / slide")
+        self.footer_cb.setChecked(settings.visible_footer)
+        self.footer_cb.setToolTip("Word: page footer · PowerPoint: small grey line at the bottom of each slide · "
+                                  "Excel: printed page footer. The invisible watermark is always added too.")
+        self.footer_cb.toggled.connect(self._footer_toggled)
+        text_card.add(self.footer_cb)
+        self.add(text_card)
+
+        # 2. files ----------------------------------------------------------
+        files = Card("Choose the files", "2")
         self.drop = DropZone("Drag & drop files or folders here", "or click to browse  •  Word, PowerPoint, Excel, "
                              "PNG/BMP pictures and text files", OFFICE_FILTER, icon="📂")
         self.drop.filesDropped.connect(self._add_files)
@@ -175,27 +193,25 @@ class ProtectPage(Page):
         files.add(self.files)
         self.add(files)
 
-        who = Card("Who is this copy for?", "2",
-                   "Their name is sealed inside the file. If the copy leaks, Trace will show it was theirs.")
+        # 3. optional recipient + options -----------------------------------
+        opts = Card("Options", "3")
         grid = QGridLayout()
         grid.setHorizontalSpacing(14)
-        grid.setVerticalSpacing(8)
         self.recipient = QLineEdit()
-        self.recipient.setPlaceholderText("e.g.  Sara Ahmed <sara@company.com>")
-        self.recipient.textChanged.connect(self._update_button)
-        self.note = QLineEdit()
-        self.note.setPlaceholderText("Optional  –  e.g. ‘Q3 board pack, sent by email’")
-        grid.addWidget(QLabel("Recipient"), 0, 0)
+        self.recipient.setPlaceholderText("Optional – e.g. Sara Ahmed. Lets you trace a leaked copy back to them.")
+        grid.addWidget(QLabel("Copy for"), 0, 0)
         grid.addWidget(self.recipient, 0, 1)
-        grid.addWidget(QLabel("Note"), 1, 0)
-        grid.addWidget(self.note, 1, 1)
-        who.add(grid)
-        self.add(who)
-
-        opts = Card("Protection options", "3")
-        toggle = QPushButton("Show protection layers ▾")
+        opts.add(grid)
+        out_row = QHBoxLayout()
+        self.out_label = label("", "Hint")
+        out_btn = QPushButton("Change save folder…")
+        out_btn.clicked.connect(self._choose_out)
+        out_row.addWidget(self.out_label, 1)
+        out_row.addWidget(out_btn)
+        opts.add(out_row)
+        toggle = QPushButton("Advanced: hiding layers ▾")
         toggle.setObjectName("Link")
-        opts.header.addWidget(toggle)
+        opts.add(toggle)
         self.layer_box = QWidget()
         lb = QVBoxLayout(self.layer_box)
         lb.setContentsMargins(0, 0, 0, 0)
@@ -210,39 +226,8 @@ class ProtectPage(Page):
             self.layer_checks[key] = cb
         self.layer_box.hide()
         toggle.clicked.connect(lambda: (self.layer_box.setVisible(not self.layer_box.isVisible()),
-                                        toggle.setText("Hide protection layers ▴" if self.layer_box.isVisible()
-                                                       else "Show protection layers ▾")))
-        opts.add(label("All recommended layers are on. Protected copies are saved next to the originals as "
-                       "“name - for Recipient”.", "Muted"))
-
-        # visible deterrent footer
-        self.footer_cb = QCheckBox("Add a visible “Confidential – prepared for …” footer")
-        self.footer_cb.setChecked(settings.visible_footer)
-        self.footer_cb.setToolTip("Shows the recipient's name at the bottom of every page/slide (Excel: printed "
-                                  "pages). A visible reminder that the copy is traceable.")
-        opts.add(self.footer_cb)
-        self.footer_box = QWidget()
-        fb = QVBoxLayout(self.footer_box)
-        fb.setContentsMargins(28, 0, 0, 0)
-        fb.setSpacing(6)
-        self.footer_edit = QLineEdit(settings.footer_template)
-        self.footer_edit.setToolTip("You can use {recipient}, {owner}, {organization} and {date}.")
-        fb.addWidget(self.footer_edit)
-        self.footer_preview = label("", "Hint")
-        fb.addWidget(self.footer_preview)
-        opts.add(self.footer_box)
-        self.footer_box.setVisible(settings.visible_footer)
-        self.footer_cb.toggled.connect(self._footer_toggled)
-        self.footer_edit.textChanged.connect(self._footer_changed)
-        self.recipient.textChanged.connect(lambda _t: self._footer_preview())
-        self._footer_preview()
-        out_row = QHBoxLayout()
-        self.out_label = label("", "Hint")
-        out_btn = QPushButton("Change save folder…")
-        out_btn.clicked.connect(self._choose_out)
-        out_row.addWidget(self.out_label, 1)
-        out_row.addWidget(out_btn)
-        opts.add(out_row)
+                                        toggle.setText("Advanced: hiding layers ▴" if self.layer_box.isVisible()
+                                                       else "Advanced: hiding layers ▾")))
         opts.add(self.layer_box)
         self.add(opts)
         self._show_out()
@@ -251,7 +236,7 @@ class ProtectPage(Page):
         self.progress = QProgressBar()
         self.progress.hide()
         run_row.addWidget(self.progress, 1)
-        self.go = QPushButton("Protect files")
+        self.go = QPushButton("Embed watermark")
         self.go.setObjectName("Primary")
         self.go.setCursor(Qt.PointingHandCursor)
         self.go.clicked.connect(self._run)
@@ -266,44 +251,40 @@ class ProtectPage(Page):
         self.add(self.results)
         self.finish()
         self.refresh_completer()
-        self._update_button()
+        self._changed()
 
     # -- helpers ------------------------------------------------------------ #
+    def text(self) -> str:
+        return self.message.toPlainText().strip()
+
     def refresh_completer(self):
-        names = sorted({i.recipient for i in self.ledger.search("")})
+        names = sorted({i.recipient for i in self.ledger.search("") if i.recipient})
         comp = QCompleter(names)
         comp.setCaseSensitivity(Qt.CaseInsensitive)
         comp.setFilterMode(Qt.MatchContains)
         self.recipient.setCompleter(comp)
+
+    def _changed(self):
+        n = len(self.text())
+        self.count.setText(f"{n} characters" if n else "Required")
+        self._update_button()
 
     def _set_layer(self, key, on):
         self.settings.layers[key] = on
         self.settings.save()
 
     def _footer_toggled(self, on):
-        self.footer_box.setVisible(on)
         self.settings.visible_footer = on
         self.settings.save()
 
-    def _footer_changed(self, text):
-        self.settings.footer_template = text
-        self.settings.save()
-        self._footer_preview()
-
-    def _footer_preview(self):
-        from ..watermark.footer import render
-
-        who = self.recipient.text().strip() or "Recipient"
-        text = render(self.footer_edit.text(), who, self.settings.owner_name, self.settings.organization)
-        self.footer_preview.setText(f"Preview:  {text}   ·   placeholders: {{recipient}} {{owner}} "
-                                    f"{{organization}} {{date}}")
-
     def _show_out(self):
         folder = self.settings.output_folder
-        self.out_label.setText(f"Save to: {folder}" if folder else "Save to: same folder as each original")
+        where = folder if folder else "the same folder as each original"
+        self.out_label.setText(f"Watermarked copies are saved to {where} as “name - watermarked”. "
+                               "Originals are never changed.")
 
     def _choose_out(self):
-        folder = QFileDialog.getExistingDirectory(self, "Where should protected copies be saved?")
+        folder = QFileDialog.getExistingDirectory(self, "Where should watermarked copies be saved?")
         self.settings.output_folder = folder or ""
         self.settings.save()
         self._show_out()
@@ -315,13 +296,15 @@ class ProtectPage(Page):
         if skipped:
             self.banner.show_message("warn", f"{skipped} file(s) skipped",
                                      "Only Word, PowerPoint, Excel (2007+), PNG/BMP/TIFF pictures and text "
-                                     "files can be protected. Old .doc/.ppt/.xls files must be re-saved in the "
+                                     "files can be watermarked. Old .doc/.ppt/.xls files must be re-saved in the "
                                      "new format first.")
+        else:
+            self.banner.hide()
 
     def _update_button(self):
         n = len(self.files.paths())
-        self.go.setEnabled(n > 0 and bool(self.recipient.text().strip()))
-        self.go.setText(f"Protect {n} file{'s' if n != 1 else ''}" if n else "Protect files")
+        self.go.setEnabled(n > 0 and bool(self.text()))
+        self.go.setText(f"Embed watermark in {n} file{'s' if n != 1 else ''}" if n else "Embed watermark")
 
     def _clear_results(self):
         while self.results_lay.count():
@@ -332,11 +315,7 @@ class ProtectPage(Page):
     # -- run ---------------------------------------------------------------- #
     def _run(self):
         paths = self.files.paths()
-        recipient, note = self.recipient.text().strip(), self.note.text().strip()
-        if not self.settings.owner_name:
-            QMessageBox.information(self, "Add your name",
-                                    "Tip: add your name in Settings so documents record you as the owner.\n"
-                                    "This time they will be marked as ‘Unknown owner’.")
+        message, recipient = self.text(), self.recipient.text().strip()
         self.go.setEnabled(False)
         self.progress.setRange(0, len(paths))
         self.progress.setValue(0)
@@ -351,7 +330,8 @@ class ProtectPage(Page):
             for i, p in enumerate(paths):
                 progress(p.name, i)
                 try:
-                    out.append((p, protect_file(p, recipient, note, settings=settings, ledger=ledger), None))
+                    out.append((p, protect_file(p, recipient, message=message, settings=settings,
+                                                ledger=ledger), None))
                 except Exception as exc:  # noqa: BLE001
                     out.append((p, None, str(exc)))
                 progress(p.name, i + 1)
@@ -369,27 +349,22 @@ class ProtectPage(Page):
         self._update_button()
         ok = [r for r in results if r[1]]
         bad = [r for r in results if not r[1]]
-        recipient = self.recipient.text().strip()
         if ok and not bad:
-            self.banner.show_message("good", f"{len(ok)} protected cop{'ies' if len(ok) != 1 else 'y'} ready for "
-                                             f"{recipient}",
-                                     "Send these files instead of the originals. Each one is logged in your "
-                                     "Sharing history.")
+            self.banner.show_message("good", f"Watermark embedded in {len(ok)} file{'s' if len(ok) != 1 else ''}",
+                                     f"Hidden text: “{self.text()}”\nShare the new “- watermarked” copies, "
+                                     "not the originals.")
         elif ok:
-            self.banner.show_message("warn", f"{len(ok)} protected, {len(bad)} failed",
-                                     "See the details below.")
+            self.banner.show_message("warn", f"{len(ok)} watermarked, {len(bad)} failed", "See the details below.")
         else:
-            self.banner.show_message("bad", "No files could be protected", "See the details below.")
+            self.banner.show_message("bad", "No files could be watermarked", "See the details below.")
         for src, res, err in results:
             card = QFrame()
             card.setObjectName("Card")
             row = QHBoxLayout(card)
             row.setContentsMargins(16, 12, 16, 12)
             if res:
-                kind = "re-shared copy — added to its chain of custody" if res.reshared else "new protected document"
-                layers = ", ".join(res.report.applied()) or "none"
-                text = (f"<b>{html.escape(res.output.name)}</b><br><span style='color:{style.MUTED}'>{kind}"
-                        f"<br>Layers: {html.escape(layers)}</span>")
+                kind = "already watermarked – new watermark added to its history" if res.reshared else "new watermark"
+                text = (f"<b>{html.escape(res.output.name)}</b><br><span style='color:{style.MUTED}'>{kind}</span>")
                 lab = QLabel(text)
                 lab.setWordWrap(True)
                 row.addWidget(QLabel("✅"))
@@ -414,48 +389,37 @@ class ProtectPage(Page):
 
 
 # =========================================================================== #
-# Trace
+# Extract watermark
 # =========================================================================== #
-class TracePage(Page):
+class ExtractPage(Page):
     def __init__(self, settings: Settings, ledger: Ledger):
-        super().__init__("Trace a leak",
-                         "Check any file (or pasted text) for your watermark and see who it was issued to.")
+        super().__init__("Extract a watermark",
+                         "Open a file to reveal its hidden watermark text and who the copy was given to.")
         self.settings, self.ledger = settings, ledger
         self.last: Optional[TraceReport] = None
 
-        src = Card("What do you want to check?")
-        seg = QHBoxLayout()
-        seg.setSpacing(0)
-        self.mode_file = QPushButton("A file")
-        self.mode_text = QPushButton("Pasted text")
-        group = QButtonGroup(self)
-        for b in (self.mode_file, self.mode_text):
-            b.setObjectName("Segment")
-            b.setCheckable(True)
-            group.addButton(b)
-            seg.addWidget(b)
-        seg.addStretch()
-        self.mode_file.setChecked(True)
-        src.add(seg)
-        self.drop = DropZone("Drop the suspicious file here", "or click to browse  •  any Office document, "
-                             "picture or text file", "All files (*.*)", multiple=False, icon="🔍")
+        src = Card("Choose a file")
+        self.drop = DropZone("Drop a file here", "or click to browse  •  Word, PowerPoint, Excel, pictures or "
+                             "text files", "All files (*.*)", multiple=False, icon="🔍")
         self.drop.filesDropped.connect(lambda ps: self._trace_file(ps[0]))
         src.add(self.drop)
+        paste_toggle = QPushButton("…or check text copied from an email, chat or website ▾")
+        paste_toggle.setObjectName("Link")
+        src.add(paste_toggle)
         self.paste_box = QWidget()
         pb = QVBoxLayout(self.paste_box)
         pb.setContentsMargins(0, 0, 0, 0)
         self.paste = QPlainTextEdit()
-        self.paste.setPlaceholderText("Paste text copied from an email, website, chat or document. Invisible "
-                                      "marks survive copy & paste.")
-        self.paste.setMinimumHeight(130)
+        self.paste.setPlaceholderText("Paste text here. Invisible watermarks survive copy & paste.")
+        self.paste.setMinimumHeight(110)
         pb.addWidget(self.paste)
-        check = QPushButton("Check text")
+        check = QPushButton("Extract from text")
         check.setObjectName("Primary")
         check.clicked.connect(self._trace_text)
         pb.addWidget(check, 0, Qt.AlignRight)
         self.paste_box.hide()
+        paste_toggle.clicked.connect(lambda: self.paste_box.setVisible(not self.paste_box.isVisible()))
         src.add(self.paste_box)
-        self.mode_file.toggled.connect(lambda on: (self.drop.setVisible(on), self.paste_box.setVisible(not on)))
         self.add(src)
 
         self.busy = QProgressBar()
@@ -465,31 +429,43 @@ class TracePage(Page):
         self.banner = Banner()
         self.add(self.banner)
 
-        self.details = Card("Document details")
+        # the extracted watermark, big and clear
+        self.result_card = Card("Watermark text")
+        self.result_text = QLabel()
+        self.result_text.setObjectName("WatermarkResult")
+        self.result_text.setWordWrap(True)
+        self.result_text.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.result_card.add(self.result_text)
+        copy_row = QHBoxLayout()
+        copy = QPushButton("Copy text")
+        copy.clicked.connect(lambda: QGuiApplication.clipboard().setText(self.last.message if self.last else ""))
+        copy_row.addWidget(copy)
+        copy_row.addStretch()
+        self.result_card.add(copy_row)
         self.detail_grid = QGridLayout()
         self.detail_grid.setHorizontalSpacing(24)
-        self.details.add(self.detail_grid)
-        self.details.hide()
-        self.add(self.details)
+        self.result_card.add(self.detail_grid)
+        self.result_card.hide()
+        self.add(self.result_card)
 
-        self.chain_card = Card("Chain of custody",
-                               subtitle="Every person this copy was issued to, in order. The last one received "
-                                        "this exact copy.")
-        self.chain = QTableWidget(0, 5)
-        self.chain.setHorizontalHeaderLabels(["#", "Issued to", "Date", "Note", "Copy ID"])
+        self.chain_card = Card("Watermark history",
+                               subtitle="Every time this document was watermarked, oldest first. The last row is "
+                                        "the copy you opened.")
+        self.chain = QTableWidget(0, 4)
+        self.chain.setHorizontalHeaderLabels(["#", "Watermark text", "Copy for", "Date"])
         self.chain.verticalHeader().hide()
         self.chain.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.chain.setSelectionBehavior(QAbstractItemView.SelectRows)
         hh = self.chain.horizontalHeader()
         hh.setSectionResizeMode(QHeaderView.ResizeToContents)
-        hh.setSectionResizeMode(3, QHeaderView.Stretch)
+        hh.setSectionResizeMode(1, QHeaderView.Stretch)
         self.chain_card.add(self.chain)
         self.chain_card.hide()
         self.add(self.chain_card)
 
-        self.layers_card = Card("Where the watermark was found",
-                                subtitle="Several layers are hidden in each file. Some may be lost when a file "
-                                         "is cleaned or converted — one surviving layer is enough.")
+        self.layers_card = Card("Where it was found",
+                                subtitle="The watermark is hidden in several places. Some may be lost when a file "
+                                         "is cleaned or converted — one is enough.")
         self.layers_lay = QVBoxLayout()
         self.layers_card.add(self.layers_lay)
         export = QPushButton("Save report…")
@@ -501,7 +477,7 @@ class TracePage(Page):
 
     def _start(self):
         self.busy.show()
-        for w in (self.banner, self.details, self.chain_card, self.layers_card):
+        for w in (self.banner, self.result_card, self.chain_card, self.layers_card):
             w.hide()
 
     def _trace_file(self, path: Path):
@@ -523,60 +499,60 @@ class TracePage(Page):
         self.busy.hide()
         self.banner.show_message("bad", "Could not read this file", msg)
 
+    @staticmethod
+    def _clear(layout):
+        while layout.count():
+            w = layout.takeAt(0).widget()
+            if w:
+                w.deleteLater()
+
     def _show(self, rep: TraceReport):
         self.busy.hide()
         self.last = rep
+        self._clear(self.detail_grid)
+        self._clear(self.layers_lay)
         if rep.verdict == "authentic":
-            sub = f"File: {rep.file}"
-            if rep.likely_source:
-                sub += (f"\nThis copy was issued to {rep.likely_source.recipient} on "
-                        f"{_fmt_time(rep.likely_source.timestamp)}. If it leaked, it most likely leaked from them.")
-            self.banner.show_message("good", rep.headline, sub)
+            self.banner.show_message("good", "Watermark found", f"File: {rep.file}")
+            self.result_text.setText(html.escape(rep.message) if rep.message else
+                                     "<span style='color:#6B7086'>(this copy was watermarked without text — "
+                                     "see the details below)</span>")
+            src_ = rep.likely_source
+            rows = [("Copy for", (src_.recipient if src_ and src_.recipient else "—")),
+                    ("Embedded on", _fmt_time(src_.timestamp) if src_ else "—"),
+                    ("Owner", " · ".join(x for x in (rep.owner, rep.organization) if x) or "—"),
+                    ("Document", rep.title or "—")]
+            for i, (k, v) in enumerate(rows):
+                self.detail_grid.addWidget(label(k, "Muted"), i // 2, (i % 2) * 2)
+                self.detail_grid.addWidget(label(f"<b>{html.escape(v)}</b>"), i // 2, (i % 2) * 2 + 1)
+            self.result_card.show()
+            if len(rep.chain) > 1:
+                self.chain.setRowCount(len(rep.chain))
+                for r, c in enumerate(rep.chain):
+                    last = c is rep.likely_source
+                    who = c.recipient or "—"
+                    if c.source == "ledger":
+                        who += "  (from history)"
+                    vals = [str(c.step), c.message or "—", who, _fmt_time(c.timestamp)]
+                    for col, v in enumerate(vals):
+                        item = QTableWidgetItem(v)
+                        if last:
+                            f = item.font()
+                            f.setBold(True)
+                            item.setFont(f)
+                        self.chain.setItem(r, col, item)
+                self.chain.setFixedHeight(48 + 34 * len(rep.chain))
+                self.chain_card.show()
         elif rep.verdict == "foreign":
             self.banner.show_message("warn", "Watermark from another team key", rep.headline +
                                      " Import that team's key in Settings to read it.")
         elif rep.verdict == "none":
             self.banner.show_message("bad", "No watermark found",
-                                     f"{rep.file} doesn't carry a VeilMark watermark, or it was destroyed "
+                                     f"{rep.file} doesn't contain a VeilMark watermark, or it was destroyed "
                                      "(for example by printing, screenshots or JPEG conversion).")
         else:
             self.banner.show_message("bad", "Could not check this file", rep.headline)
 
-        while self.detail_grid.count():
-            w = self.detail_grid.takeAt(0).widget()
-            if w:
-                w.deleteLater()
-        if rep.verdict == "authentic":
-            rows = [("Owner", rep.owner or "—"), ("Organisation", rep.organization or "—"),
-                    ("Document", rep.title or "—"), ("Document ID", rep.doc_id or "—"),
-                    ("First protected", _fmt_time(rep.created))]
-            for i, (k, v) in enumerate(rows):
-                self.detail_grid.addWidget(label(k, "Muted"), i // 2, (i % 2) * 2)
-                self.detail_grid.addWidget(label(f"<b>{html.escape(v)}</b>"), i // 2, (i % 2) * 2 + 1)
-            self.details.show()
-
-            self.chain.setRowCount(len(rep.chain))
-            for r, c in enumerate(rep.chain):
-                last = c is rep.likely_source
-                name = c.recipient + ("   ← this copy" if last else "")
-                if c.source == "ledger":
-                    name += "  (from history)"
-                vals = [str(c.step), name, _fmt_time(c.timestamp), c.note, c.hop_id]
-                for col, v in enumerate(vals):
-                    item = QTableWidgetItem(v)
-                    if last:
-                        f = item.font()
-                        f.setBold(True)
-                        item.setFont(f)
-                    self.chain.setItem(r, col, item)
-            self.chain.setFixedHeight(48 + 34 * max(1, len(rep.chain)))
-            self.chain_card.show()
-
-        while self.layers_lay.count():
-            w = self.layers_lay.takeAt(0).widget()
-            if w:
-                w.deleteLater()
-        if rep.layer_status:
+        if rep.layer_status and rep.verdict != "error":
             for name, ok, detail in rep.layer_status:
                 colour = style.GOOD if ok else "#A3A7BA"
                 txt = (f"<span style='color:{colour};font-weight:800'>{'✔' if ok else '—'}</span>&nbsp;&nbsp;"
@@ -590,28 +566,28 @@ class TracePage(Page):
         rep = self.last
         if not rep:
             return
-        dest, _ = QFileDialog.getSaveFileName(self, "Save trace report", f"Trace report - {rep.file}.html",
+        dest, _ = QFileDialog.getSaveFileName(self, "Save report", f"Watermark report - {rep.file}.html",
                                               "Web page (*.html)")
         if not dest:
             return
-        rows = "".join(f"<tr><td>{c.step}</td><td>{html.escape(c.recipient)}</td><td>{_fmt_time(c.timestamp)}</td>"
-                       f"<td>{html.escape(c.note)}</td><td>{c.hop_id}</td></tr>" for c in rep.chain)
+        rows = "".join(f"<tr><td>{c.step}</td><td>{html.escape(c.message)}</td><td>{html.escape(c.recipient)}</td>"
+                       f"<td>{_fmt_time(c.timestamp)}</td><td>{c.hop_id}</td></tr>" for c in rep.chain)
         layers = "".join(f"<li>{'✔' if ok else '✖'} {html.escape(n)} — {html.escape(d)}</li>"
                          for n, ok, d in rep.layer_status)
-        Path(dest).write_text(f"""<!doctype html><meta charset="utf-8"><title>VeilMark trace report</title>
+        Path(dest).write_text(f"""<!doctype html><meta charset="utf-8"><title>VeilMark watermark report</title>
 <style>body{{font-family:Segoe UI,Arial;margin:40px;color:#1f2233}}td,th{{border:1px solid #ddd;padding:6px 10px}}
 table{{border-collapse:collapse}}</style>
-<h1>VeilMark trace report</h1><p>Generated {dt.datetime.now():%d %b %Y %H:%M} with VeilMark {__version__}</p>
-<h2>{html.escape(rep.headline)}</h2><p>File: {html.escape(rep.file)}</p>
+<h1>VeilMark watermark report</h1><p>Generated {dt.datetime.now():%d %b %Y %H:%M} with VeilMark {__version__}</p>
+<p>File: {html.escape(rep.file)}</p><h2>Watermark: {html.escape(rep.message or '(none)')}</h2>
 <p>Owner: {html.escape(rep.owner)} {html.escape(rep.organization)}<br>Document: {html.escape(rep.title)}<br>
-Document ID: {rep.doc_id}<br>First protected: {_fmt_time(rep.created)}</p>
-<h3>Chain of custody</h3><table><tr><th>#</th><th>Issued to</th><th>Date</th><th>Note</th><th>Copy ID</th></tr>
-{rows}</table><h3>Layers</h3><ul>{layers}</ul>""", encoding="utf-8")
+Document ID: {rep.doc_id}<br>First watermarked: {_fmt_time(rep.created)}</p>
+<h3>History</h3><table><tr><th>#</th><th>Watermark text</th><th>Copy for</th><th>Date</th><th>Copy ID</th></tr>
+{rows}</table><h3>Where it was found</h3><ul>{layers}</ul>""", encoding="utf-8")
         reveal_in_explorer(Path(dest))
 
 
 # =========================================================================== #
-# Encrypt / decrypt
+# Encrypt / Decrypt (two separate pages)
 # =========================================================================== #
 def password_strength(pw: str) -> tuple[int, str]:
     score = 0
@@ -628,29 +604,22 @@ def password_strength(pw: str) -> tuple[int, str]:
     return score, ["Too short", "Weak", "Fair", "Good", "Strong", "Excellent"][score]
 
 
-class EncryptPage(Page):
+class _CryptoPage(Page):
+    ENCRYPT = True
+
     def __init__(self, settings: Settings):
-        super().__init__("Encrypt & decrypt",
-                         "Lock files with the thesis' hyperchaotic cascade cipher. Only someone with the "
-                         "password can open them.")
+        enc = self.ENCRYPT
+        super().__init__("Encrypt files" if enc else "Decrypt files",
+                         "Lock files with a password using the hyperchaotic thesis cipher. Only someone with the "
+                         "password can open them." if enc else
+                         "Unlock .vmk files with the password that was used to encrypt them.")
         self.settings = settings
 
-        top = Card("Choose files", "1")
-        seg = QHBoxLayout()
-        seg.setSpacing(0)
-        self.enc_btn = QPushButton("🔒  Encrypt")
-        self.dec_btn = QPushButton("🔓  Decrypt")
-        group = QButtonGroup(self)
-        for b in (self.enc_btn, self.dec_btn):
-            b.setObjectName("Segment")
-            b.setCheckable(True)
-            group.addButton(b)
-            seg.addWidget(b)
-        seg.addStretch()
-        self.enc_btn.setChecked(True)
-        top.add(seg)
-        self.drop = DropZone("Drop files here", "or click to browse  •  any file type", "All files (*.*)",
-                             icon="🔐")
+        top = Card("Choose the files to encrypt" if enc else "Choose the .vmk files to decrypt", "1")
+        self.drop = DropZone("Drop files here" if enc else "Drop encrypted .vmk files here",
+                             "or click to browse  •  any file type" if enc else "or click to browse",
+                             "All files (*.*)" if enc else "Encrypted files (*.vmk);;All files (*.*)",
+                             icon="🔒" if enc else "🔓")
         self.drop.filesDropped.connect(self._add)
         top.add(self.drop)
         self.files = FileList()
@@ -658,11 +627,13 @@ class EncryptPage(Page):
         top.add(self.files)
         self.add(top)
 
-        pw = Card("Password", "2")
+        pw = Card("Choose a password" if enc else "Enter the password", "2")
         grid = QGridLayout()
         self.pw1 = QLineEdit()
         self.pw1.setEchoMode(QLineEdit.Password)
-        self.pw1.setPlaceholderText("Choose a strong password")
+        self.pw1.setPlaceholderText("Choose a strong password" if enc else "Password used to encrypt")
+        grid.addWidget(QLabel("Password"), 0, 0)
+        grid.addWidget(self.pw1, 0, 1)
         self.pw2 = QLineEdit()
         self.pw2.setEchoMode(QLineEdit.Password)
         self.pw2.setPlaceholderText("Type it again")
@@ -673,31 +644,37 @@ class EncryptPage(Page):
         self.meter.setRange(0, 5)
         self.meter.setFixedWidth(160)
         self.meter_label = label("", "Hint")
-        grid.addWidget(QLabel("Password"), 0, 0)
-        grid.addWidget(self.pw1, 0, 1)
-        self.pw2_label = QLabel("Confirm")
-        grid.addWidget(self.pw2_label, 1, 0)
-        grid.addWidget(self.pw2, 1, 1)
         meter_row = QHBoxLayout()
-        meter_row.addWidget(self.meter)
-        meter_row.addWidget(self.meter_label)
+        if enc:
+            grid.addWidget(QLabel("Confirm"), 1, 0)
+            grid.addWidget(self.pw2, 1, 1)
+            meter_row.addWidget(self.meter)
+            meter_row.addWidget(self.meter_label)
+        else:
+            self.pw2.hide()
+            self.meter.hide()
         meter_row.addStretch()
         meter_row.addWidget(self.show_pw)
         grid.addLayout(meter_row, 2, 1)
         pw.add(grid)
         self.armour = QCheckBox("Add AES-256-GCM armour (recommended)")
         self.armour.setChecked(settings.aes_armour)
-        self.armour.setToolTip("After the chaotic rounds, the result is also sealed with AES-256-GCM. This adds "
-                               "modern, proven security and tamper detection.")
+        self.armour.setToolTip("After the chaotic rounds, the result is also sealed with AES-256-GCM: modern, "
+                               "proven security and tamper detection.")
         self.armour.toggled.connect(self._armour)
-        pw.add(self.armour)
-        pw.add(label("Pipeline: 4-D hyperchaotic Chen keystream → S-box 1 → Mersenne Twister → S-box 2 → 5-D "
-                     "hyperchaotic keystream → S-box 3 → bit-level state machine → AES-256-GCM. "
-                     "There is no way to recover a forgotten password.", "Hint"))
+        if enc:
+            pw.add(self.armour)
+            pw.add(label("Pipeline: 4-D hyperchaotic Chen keystream → S-box 1 → Mersenne Twister → S-box 2 → 5-D "
+                         "hyperchaotic keystream → S-box 3 → bit-level state machine → AES-256-GCM. "
+                         "Encrypted copies are saved as “name.ext.vmk”. There is no way to recover a forgotten "
+                         "password.", "Hint"))
+        else:
+            self.armour.hide()
+            pw.add(label("The original file name is restored automatically.", "Hint"))
         self.add(pw)
         for w in (self.pw1, self.pw2):
             w.textChanged.connect(self._update)
-        self.enc_btn.toggled.connect(self._mode)
+            w.returnPressed.connect(lambda: self.go.isEnabled() and self._run())
 
         row = QHBoxLayout()
         self.progress = QProgressBar()
@@ -708,51 +685,54 @@ class EncryptPage(Page):
         col.addWidget(self.progress)
         col.addWidget(self.status)
         row.addLayout(col, 1)
-        self.go = QPushButton("Encrypt")
+        self.go = QPushButton("Encrypt" if enc else "Decrypt")
         self.go.setObjectName("Primary")
+        self.go.setCursor(Qt.PointingHandCursor)
         self.go.clicked.connect(self._run)
         row.addWidget(self.go)
         self.add(row)
         self.banner = Banner()
         self.add(self.banner)
         self.finish()
-        self._mode(True)
+        self._update()
 
     def _armour(self, on):
         self.settings.aes_armour = on
         self.settings.save()
 
     def _add(self, paths):
-        self.files.add(paths)
-        enc = [p for p in self.files.paths() if is_encrypted_file(p)]
-        if enc and len(enc) == len(self.files.paths()):
-            self.dec_btn.setChecked(True)
-        elif not enc:
-            self.enc_btn.setChecked(True)
-
-    def _mode(self, encrypt: bool):
-        for w in (self.pw2, self.pw2_label, self.meter, self.meter_label, self.armour):
-            w.setVisible(encrypt)
-        self.pw1.setPlaceholderText("Choose a strong password" if encrypt else "Password used to encrypt")
-        self._update()
+        if self.ENCRYPT:
+            locked = [p for p in paths if is_encrypted_file(p)]
+            self.files.add([p for p in paths if p not in locked])
+            if locked:
+                self.banner.show_message("info", f"{len(locked)} file(s) are already encrypted",
+                                         "Use the Decrypt page to unlock .vmk files.")
+        else:
+            ok = [p for p in paths if is_encrypted_file(p)]
+            self.files.add(ok)
+            if len(ok) < len(paths):
+                self.banner.show_message("warn", f"{len(paths) - len(ok)} file(s) skipped",
+                                         "Only files encrypted by VeilMark (.vmk) can be decrypted here.")
 
     def _update(self):
-        encrypt = self.enc_btn.isChecked()
+        enc = self.ENCRYPT
         score, text = password_strength(self.pw1.text())
         self.meter.setValue(score)
         self.meter_label.setText(text if self.pw1.text() else "")
         n = len(self.files.paths())
         ok = n > 0 and bool(self.pw1.text())
-        if encrypt:
+        if enc:
             ok = ok and self.pw1.text() == self.pw2.text() and len(self.pw1.text()) >= 6
             if self.pw2.text() and self.pw1.text() != self.pw2.text():
                 self.meter_label.setText("Passwords don't match")
-        verb = "Encrypt" if encrypt else "Decrypt"
+            elif self.pw1.text() and len(self.pw1.text()) < 6:
+                self.meter_label.setText("Use at least 6 characters")
+        verb = "Encrypt" if enc else "Decrypt"
         self.go.setText(f"{verb} {n} file{'s' if n != 1 else ''}" if n else verb)
         self.go.setEnabled(ok)
 
     def _run(self):
-        encrypt = self.enc_btn.isChecked()
+        encrypt = self.ENCRYPT
         paths, pw, armour = self.files.paths(), self.pw1.text(), self.armour.isChecked()
         self.go.setEnabled(False)
         self.progress.setValue(0)
@@ -770,9 +750,7 @@ class EncryptPage(Page):
                         out.append((p, encrypt_file(p, pw, aes_armour=armour, progress=sub), None))
                     else:
                         out.append((p, decrypt_file(p, pw, progress=sub), None))
-                except DecryptionError as exc:
-                    out.append((p, None, str(exc)))
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:  # noqa: BLE001 - DecryptionError has a friendly message
                     out.append((p, None, str(exc)))
             return out
 
@@ -780,7 +758,7 @@ class EncryptPage(Page):
             self.progress.setValue(int(frac * 1000))
             self.status.setText(msg)
 
-        run_in_background(job, lambda r: self._done(r, encrypt), self._failed, prog)
+        run_in_background(job, self._done, self._failed, prog)
 
     def _failed(self, msg):
         self.progress.hide()
@@ -788,15 +766,15 @@ class EncryptPage(Page):
         self._update()
         self.banner.show_message("bad", "Something went wrong", msg)
 
-    def _done(self, results, encrypt):
+    def _done(self, results):
         self.progress.hide()
         self.status.setText("")
         ok = [r for r in results if r[1]]
         bad = [r for r in results if not r[1]]
         lines = [f"✔ {r[1].name}" for r in ok] + [f"✖ {r[0].name}: {r[2]}" for r in bad]
-        verb = "encrypted" if encrypt else "decrypted"
+        verb = "encrypted" if self.ENCRYPT else "decrypted"
         kind = "good" if not bad else ("warn" if ok else "bad")
-        title = f"{len(ok)} file(s) {verb}" if ok else f"Nothing was {verb}"
+        title = f"{len(ok)} file{'s' if len(ok) != 1 else ''} {verb}" if ok else f"Nothing was {verb}"
         self.banner.show_message(kind, title, "\n".join(lines[:15]))
         if ok:
             self.files.clear()
@@ -806,51 +784,55 @@ class EncryptPage(Page):
         self._update()
 
 
+class EncryptPage(_CryptoPage):
+    ENCRYPT = True
+
+
+class DecryptPage(_CryptoPage):
+    ENCRYPT = False
+
+
 # =========================================================================== #
 # History
 # =========================================================================== #
 class HistoryPage(Page):
     def __init__(self, ledger: Ledger):
-        super().__init__("Sharing history", "Every protected copy you've created on this computer.")
+        super().__init__("History", "Every watermark you've embedded on this computer.")
         self.ledger = ledger
         row = QHBoxLayout()
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Search by recipient, file, note or ID…")
+        self.search.setPlaceholderText("Search by watermark text, person, file or ID…")
         self.search.textChanged.connect(self.refresh)
         row.addWidget(self.search, 1)
         export = QPushButton("Export to Excel (CSV)…")
         export.clicked.connect(self._export)
         row.addWidget(export)
         self.add(row)
-        self.table = QTableWidget(0, 6)
-        self.table.setHorizontalHeaderLabels(["Date", "Recipient", "Original file", "Note", "Shared from",
-                                              "Copy ID"])
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(["Date", "Watermark text", "Copy for", "Original file", "Copy ID"])
         self.table.verticalHeader().hide()
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table.setAlternatingRowColors(False)
         hh = self.table.horizontalHeader()
         hh.setSectionResizeMode(QHeaderView.ResizeToContents)
-        hh.setSectionResizeMode(2, QHeaderView.Stretch)
+        hh.setSectionResizeMode(1, QHeaderView.Stretch)
         self.table.setMinimumHeight(420)
         self.table.doubleClicked.connect(self._open_row)
         self.add(self.table, 1)
-        self.empty = label("Nothing here yet. Protected copies will appear here.", "Muted")
+        self.empty = label("Nothing here yet. Watermarked files will appear here.", "Muted")
         self.add(self.empty)
         self.refresh()
 
     def refresh(self):
         issues = self.ledger.search(self.search.text().strip())
-        by_hop = {i.hop_id: i for i in self.ledger.search("")}
         self.issues = issues
         self.table.setRowCount(len(issues))
         for r, i in enumerate(issues):
-            parent = by_hop.get(i.parent_hop)
-            vals = [_fmt_time(i.timestamp), i.recipient, Path(i.source_file).name, i.note,
-                    parent.recipient if parent else ("—" if not i.parent_hop else "another computer"), i.hop_id]
+            vals = [_fmt_time(i.timestamp), i.message or "—", i.recipient or "—", Path(i.source_file).name,
+                    i.hop_id]
             for c, v in enumerate(vals):
                 item = QTableWidgetItem(v)
-                item.setToolTip(i.output_file if c == 2 else v)
+                item.setToolTip(i.output_file if c == 3 else v)
                 self.table.setItem(r, c, item)
         self.empty.setVisible(not issues)
 
@@ -861,7 +843,7 @@ class HistoryPage(Page):
             reveal_in_explorer(p)
 
     def _export(self):
-        dest, _ = QFileDialog.getSaveFileName(self, "Export history", "VeilMark sharing history.csv", "CSV (*.csv)")
+        dest, _ = QFileDialog.getSaveFileName(self, "Export history", "VeilMark history.csv", "CSV (*.csv)")
         if dest:
             n = self.ledger.export_csv(Path(dest))
             QMessageBox.information(self, "Exported", f"{n} rows saved to\n{dest}")
@@ -877,7 +859,7 @@ class SettingsPage(Page):
         super().__init__("Settings", "Your details and your team's watermark key.")
         self.settings = settings
 
-        me = Card("About you", subtitle="Recorded as the owner of every document you protect.")
+        me = Card("About you", subtitle="Recorded as the owner of every watermark you embed.")
         grid = QGridLayout()
         self.name = QLineEdit(settings.owner_name)
         self.name.setPlaceholderText("Your full name")
@@ -1008,4 +990,5 @@ class SettingsPage(Page):
         self.saved.setText("New team key generated ✔")
 
 
-__all__: List[str] = ["HomePage", "ProtectPage", "TracePage", "EncryptPage", "HistoryPage", "SettingsPage"]
+__all__: List[str] = ["HomePage", "EmbedPage", "ExtractPage", "EncryptPage", "DecryptPage", "HistoryPage",
+                      "SettingsPage"]

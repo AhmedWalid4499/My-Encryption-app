@@ -13,11 +13,11 @@ VeilMark is a Windows desktop app that:
 It is a re-engineering of the thesis Mathematica code (`InsertSecretMessage`, `EncImg2`, `DecImg`, `calSeqChen`,
 `calc5D`, `enc`/`trans`, the S-boxes `sb1`–`sb3`) for real-world documents.
 
-| Home | Protect |
+| Home | Embed a watermark |
 |---|---|
-| ![Home](docs/screenshots/home.png) | ![Protect](docs/screenshots/protect.png) |
-| **Trace a leak** | **Encrypt** |
-| ![Trace](docs/screenshots/trace.png) | ![Encrypt](docs/screenshots/encrypt.png) |
+| ![Home](docs/screenshots/home.png) | ![Embed a watermark](docs/screenshots/embed.png) |
+| **Extract a watermark** | **Encrypt** |
+| ![Extract](docs/screenshots/extract.png) | ![Encrypt](docs/screenshots/encrypt.png) |
 
 ---
 
@@ -70,32 +70,35 @@ python run_veilmark.py
 
 ## Using it
 
+The sidebar has two clear sections: **Watermark** (Embed / Extract) and **Encryption** (Encrypt / Decrypt).
+
 ### First run
-Open **Settings**, type your name and organisation, and click **Save**. They are sealed into every document you
-protect as its owner.
+Open **Settings**, type your name and organisation, and click **Save**. They are recorded as the owner of every
+watermark you embed.
 
-### Protect a document
-1. Drag files or folders onto the drop zone.
-2. Type who the copy is for (e.g. `Sara Ahmed <sara@company.com>`) and an optional note.
-3. Click **Protect**. You get `Report - for Sara Ahmed.pptx` next to the original. Send that copy, not the original.
+### Embed a watermark
+1. **Write your watermark**: type the text to hide, e.g. `© 2026 BookBeans – Confidential, do not distribute`.
+   Tick *Also show this text visibly as a footer* if you want it printed at the bottom of every page / slide too.
+2. **Choose the files**: drag files or folders onto the drop zone, or click to browse.
+3. **Options (optional)**: fill in *Copy for* (e.g. `Sara Ahmed`) if you want to trace a leaked copy back to that
+   person.
+4. Click **Embed watermark**. You get `Report - watermarked.pptx` (or `Report - for Sara Ahmed.pptx`) next to the
+   original. The original is never changed.
 
-**Re-sharing:** if Sara's copy (or any protected copy) is protected again for someone else, VeilMark detects the
-existing watermark and *adds a link to its chain of custody* (Owner → Sara → Omar → …). Every protected copy is
-also logged in **History**.
+If you embed a new watermark in a file that already has one, VeilMark keeps the earlier ones in the file's
+**watermark history** (e.g. *Owner → Sara → Omar*), so a leaked copy still points at the last person who received
+it. Every watermark you embed is also listed in **History**.
 
-**Visible footer (optional deterrent):** tick *Add a visible "Confidential – prepared for …" footer* in step 3. Every
-page (Word), every slide (PowerPoint) or every printed sheet (Excel, shown in Page Layout view and on print) then
-shows e.g. `CONFIDENTIAL – Prepared for Sara Ahmed · BookBeans · 05 Nov 2026`. You can edit the wording with
-`{recipient}`, `{owner}`, `{organization}` and `{date}`. Existing footers are kept. When a copy is re-shared, the
-footer is switched to the new recipient. The footer can be deleted by hand, but the invisible layers still trace
-the copy.
+The visible footer appears on every page in Word, at the bottom of every slide in PowerPoint, and in the printed
+page footer in Excel (shown in Page Layout view and on print). Existing footers are kept. If someone deletes the
+visible footer, the invisible watermark is still there.
 
-### Trace a leak
-Drop the file you found (or switch to **Pasted text** and paste text copied from an email, website or chat). You'll
-see:
+### Extract a watermark
+Drop any file onto **Extract watermark**, or paste text copied from an email, website or chat. You'll see:
 
-* the owner, organisation and document ID,
-* the **chain of custody**, with the last row marked "this copy". That's the person this exact copy was issued to,
+* the **watermark text**, in large type (with a *Copy text* button),
+* who the copy was for, when it was embedded, and the owner,
+* the **watermark history** if the file was watermarked more than once,
 * which hidden layers survived.
 
 You can save the result as an HTML report.
@@ -105,19 +108,23 @@ Watermarks are sealed with your **team key** (Settings → Team watermark key). 
 (**Copy**, then on their PC **Use a colleague's key…**) so everyone can trace each other's documents. A file
 protected with a different key is reported as *"watermark from another team key"*.
 
-### Encrypt / decrypt
-Drop any files, choose a password and click **Encrypt**. You get `name.ext.vmk`. Drop a `.vmk` file to switch to
-decrypt mode automatically. There is no password recovery.
+### Encrypt
+Open **Encrypt**, drop any files, type a password twice and click **Encrypt**. You get `name.ext.vmk` next to each
+file. There is no password recovery.
+
+### Decrypt
+Open **Decrypt**, drop the `.vmk` files, type the password and click **Decrypt**. The original file comes back with
+its original name.
 
 ### Command line
 `veilmark-cli.exe` (or `python run_veilmark.py …`) is included for batch work:
 
 ```bash
-veilmark-cli protect "Q3 plan.pptx" "Budget.xlsx" --to "Sara Ahmed" --note "board pack"
+veilmark-cli embed "Q3 plan.pptx" "Budget.xlsx" --text "© 2026 BookBeans – Confidential" --to "Sara Ahmed" --footer
 ```
 
 ```bash
-veilmark-cli trace "found online.pptx"
+veilmark-cli extract "found online.pptx"
 ```
 
 ```bash
@@ -205,7 +212,7 @@ veilmark/
   service.py           protect_file / trace_file used by GUI and CLI
   gui/                 PySide6 (Qt) desktop interface
   cli.py               command line
-tests/                 59 tests incl. LibreOffice re-save, Inspect-Document, slide-copy, multi-hop, cross-PC vectors
+tests/                 72 tests incl. LibreOffice re-save, Inspect-Document, slide-copy, multi-hop, cross-PC vectors
 packaging/             PyInstaller spec, Inno Setup installer script, Windows version info
 ```
 

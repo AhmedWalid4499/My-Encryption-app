@@ -27,6 +27,7 @@ FOOTER_REL = R_NS + "/footer"
 FOOTER_CT = "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"
 
 MARK = "_VeilMarkFooter"          # Word bookmark name / PowerPoint shape name
+XL_MARK = "\u2060\u200b\u2060"     # invisible tag that identifies our Excel footer
 SHAPE_NAME = "VeilMark Footer"
 DEFAULT_TEMPLATE = "CONFIDENTIAL – Prepared for {recipient} · {organization} · {date}"
 
@@ -205,7 +206,7 @@ def _xl(pkg: Package, text: str) -> str:
     if wb.tag != f"{{{SS_NS}}}workbook":
         return "skipped - strict OOXML workbook"
     targets = {rel.get("Id"): pkg.resolve(wb_name, rel.get("Target")) for rel in pkg.relationships(wb_name)}
-    ours = "&C&8&K7F7F7F" + _xl_escape(text)
+    ours = "&C&8&K7F7F7F" + _xl_escape(text) + XL_MARK
     count = 0
     for sh in wb.iter(f"{{{SS_NS}}}sheet"):
         if sh.get("state") in ("hidden", "veryHidden"):
@@ -239,7 +240,7 @@ def _xl(pkg: Package, text: str) -> str:
             footer.text = ours
         else:
             existing = footer.text or ""
-            if "prepared for" in existing.lower() or not existing.strip():
+            if XL_MARK in existing or "prepared for" in existing.lower() or not existing.strip():
                 footer.text = ours
             elif "&C" not in existing:
                 footer.text = existing + ours
@@ -247,7 +248,7 @@ def _xl(pkg: Package, text: str) -> str:
                 continue  # leave the author's centre footer alone
         for tag in ("evenFooter", "firstFooter"):
             alt = hf.find(f"{{{SS_NS}}}{tag}")
-            if alt is not None and "prepared for" in (alt.text or "").lower():
+            if alt is not None and (XL_MARK in (alt.text or "") or "prepared for" in (alt.text or "").lower()):
                 alt.text = ours
         pkg.set(part, to_xml(ws))
         count += 1

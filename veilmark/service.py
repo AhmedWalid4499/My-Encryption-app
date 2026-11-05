@@ -32,6 +32,7 @@ class ChainEntry:
     hop_id: str
     issued_by: str = ""
     source: str = "record"  # "record" | "ledger" | "token only"
+    message: str = ""       # watermark text embedded in this copy
 
 
 @dataclass
@@ -47,6 +48,7 @@ class TraceReport:
     created: str = ""
     chain: List[ChainEntry] = field(default_factory=list)
     likely_source: Optional[ChainEntry] = None
+    message: str = ""                # the watermark text of this exact copy
     layer_status: List[tuple] = field(default_factory=list)  # (layer, found, detail)
 
 
@@ -66,35 +68,52 @@ def _unique(path: Path) -> Path:
         i += 1
 
 
-def protect_file(src, recipient: str, note: str = "", *, settings: Settings,
+def output_name(src: Path, recipient: str, reshared: bool, settings: Settings) -> str:
+    stem = src.stem
+    if reshared:  # don't stack suffixes: "Plan - for Ali - for Sara"
+        stem = re.sub(r" - (for .+|watermarked)$", "", stem)
+    if recipient:
+        return settings.filename_pattern.format(stem=stem, recipient=_safe_name(recipient), ext=src.suffix)
+    return f"{stem} - watermarked{src.suffix}"
+
+
+def protect_file(src, recipient: str = "", note: str = "", *, message: str = "", settings: Settings,
                  ledger: Optional[Ledger] = None, output_dir=None, title: str = "") -> ProtectResult:
+    """Embed a watermark.
+
+    ``message`` is the watermark text the user typed (e.g. "© BookBeans 2026 - do not share").
+    ``recipient`` is optional: who this copy is for, so a leaked copy can be traced to them.
+    """
     src = Path(src)
-    recipient = recipient.strip()
-    if not recipient:
-        raise ValueError("Please enter who this copy is for.")
+    recipient, message = recipient.strip(), message.strip()
+    if not recipient and not message:
+        raise ValueError("Please type the watermark text.")
     data = src.read_bytes()
     key = settings.key_bytes
     record = read_existing_record(data, src.name, key)
     reshared = record is not None
     parent = record.chain[-1].hop_id if record and record.chain else None
     if record is None:
-        record = Record.new(settings.owner_name or "Unknown owner", settings.organization, title or src.stem)
-    hop = record.add_hop(recipient, note, issued_by=settings.owner_name)
+        record = Record.new(settings.owner_name or "Unknown owner", settings.organization, title or src.stem,
+                            message=message)
+    hop = record.add_hop(recipient, note, issued_by=settings.owner_name, message=message)
     opts = EmbedOptions(**{k: v for k, v in settings.layers.items() if k in EmbedOptions.__dataclass_fields__})
     if settings.visible_footer:
-        opts.footer_text = render_footer(settings.footer_template, recipient, record.owner, record.organization)
+        opts.footer_text = message or render_footer(settings.footer_template, recipient, record.owner,
+                                                    record.organization)
     out_bytes, report = protect_bytes(data, src.name, record, key, opts)
 
     out_dir = Path(output_dir or settings.output_folder or src.parent)
     out_dir.mkdir(parents=True, exist_ok=True)
-    stem = re.sub(r" - for .+$", "", src.stem) if reshared else src.stem
-    name = settings.filename_pattern.format(stem=stem, recipient=_safe_name(recipient), ext=src.suffix)
-    out = _unique(out_dir / name)
+    out = _unique(out_dir / output_name(src, recipient, reshared, settings))
     out.write_bytes(out_bytes)
 
-    (ledger or Ledger()).add(Issue(hop.hop_id, record.doc_id, parent, recipient, note,
-                                   record.owner, settings.owner_name, str(src), str(out), hop.timestamp))
+    (ledger or Ledger()).add(Issue(hop.hop_id, record.doc_id, parent, recipient, note, record.owner,
+                                   settings.owner_name, str(src), str(out), hop.timestamp, message))
     return ProtectResult(src, out, record, report, reshared)
+
+
+embed_watermark = protect_file  # clearer name for new code
 
 
 def build_report(name: str, result: TraceResult, ledger: Optional[Ledger] = None) -> TraceReport:
@@ -116,7 +135,8 @@ def build_report(name: str, result: TraceResult, ledger: Optional[Ledger] = None
         rep.owner, rep.organization, rep.title = record.owner, record.organization, record.title
         rep.doc_id, rep.created = record.doc_id, record.created
         for i, hop in enumerate(record.chain, 1):
-            rep.chain.append(ChainEntry(i, hop.recipient, hop.note, hop.timestamp, hop.hop_id, hop.issued_by))
+            rep.chain.append(ChainEntry(i, hop.recipient, hop.note, hop.timestamp, hop.hop_id, hop.issued_by,
+                                        message=hop.message or (record.message if i == 1 else "")))
     # tokens may reveal a *longer* chain than a stale record (e.g. record stripped after a re-share)
     known = {c.hop_id for c in rep.chain}
     for tok in result.tokens:
@@ -130,7 +150,7 @@ def build_report(name: str, result: TraceResult, ledger: Optional[Ledger] = None
         if issue:
             rep.owner = rep.owner or issue.owner
             rep.chain.append(ChainEntry(len(rep.chain) + 1, issue.recipient, issue.note, issue.timestamp,
-                                        tok.hop_id, issue.issued_by, source="ledger"))
+                                        tok.hop_id, issue.issued_by, source="ledger", message=issue.message))
         else:
             rep.chain.append(ChainEntry(len(rep.chain) + 1, "(issued on another computer)", "", "",
                                         tok.hop_id, source="token only"))
@@ -139,9 +159,13 @@ def build_report(name: str, result: TraceResult, ledger: Optional[Ledger] = None
         c.step = i
     if rep.chain:
         rep.likely_source = rep.chain[-1]
-        rep.headline = f"Protected copy issued to {rep.likely_source.recipient}"
+        rep.message = next((c.message for c in reversed(rep.chain) if c.message), "")
+    if not rep.message and record:
+        rep.message = record.latest_message
+    if rep.likely_source and rep.likely_source.recipient:
+        rep.headline = f"Watermarked copy given to {rep.likely_source.recipient}"
     else:
-        rep.headline = "Authentic VeilMark watermark found"
+        rep.headline = "Watermark found"
     return rep
 
 
@@ -155,4 +179,4 @@ def trace_pasted_text(text: str, *, settings: Settings, ledger: Optional[Ledger]
     return build_report("Pasted text", trace_text(text, settings.key_bytes), ledger)
 
 
-__all__ = ["protect_file", "trace_file", "trace_pasted_text", "TraceReport", "ProtectResult", "now_iso"]
+__all__ = ["protect_file", "embed_watermark", "trace_file", "trace_pasted_text", "TraceReport", "ProtectResult", "now_iso"]
