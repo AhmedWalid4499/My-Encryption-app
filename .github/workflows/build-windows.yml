@@ -13,12 +13,20 @@ permissions:
 jobs:
   test-linux:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-writer libreoffice-impress libreoffice-calc libegl1 libxkbcommon0
+      - name: Install Qt libraries
+        timeout-minutes: 5
+        run: sudo apt-get update -o Acquire::Retries=3 && sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 libegl1 libxkbcommon0
+      - name: Install LibreOffice (optional - enables the Office re-save tests)
+        # a slow/hung Ubuntu mirror must not block a release: the re-save tests skip themselves without it
+        timeout-minutes: 6
+        continue-on-error: true
+        run: sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 libreoffice-writer libreoffice-impress libreoffice-calc
       - run: pip install -r requirements-dev.txt
       - run: python -m pytest -q
         env:
@@ -26,6 +34,7 @@ jobs:
 
   build-windows:
     runs-on: windows-latest
+    timeout-minutes: 40
     needs: test-linux
     steps:
       - uses: actions/checkout@v4
