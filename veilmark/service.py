@@ -1,0 +1,155 @@
+"""High-level operations used by both the GUI and the command line."""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import List, Optional
+
+from .registry import Issue, Ledger
+from .settings import Settings
+from .watermark import EmbedOptions, EmbedReport, Record, TraceResult, protect_bytes, read_existing_record, trace_bytes, trace_text
+from .watermark.payload import now_iso
+
+
+@dataclass
+class ProtectResult:
+    source: Path
+    output: Path
+    record: Record
+    report: EmbedReport
+    reshared: bool  # True if the file already carried our mark and a new hop was appended
+
+
+@dataclass
+class ChainEntry:
+    step: int
+    recipient: str
+    note: str
+    timestamp: str
+    hop_id: str
+    issued_by: str = ""
+    source: str = "record"  # "record" | "ledger" | "token only"
+
+
+@dataclass
+class TraceReport:
+    file: str
+    result: TraceResult
+    verdict: str                     # "authentic" | "foreign" | "none" | "error"
+    headline: str
+    owner: str = ""
+    organization: str = ""
+    title: str = ""
+    doc_id: str = ""
+    created: str = ""
+    chain: List[ChainEntry] = field(default_factory=list)
+    likely_source: Optional[ChainEntry] = None
+    layer_status: List[tuple] = field(default_factory=list)  # (layer, found, detail)
+
+
+def _safe_name(text: str) -> str:
+    text = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", text).strip().rstrip(".")
+    return text[:60] or "recipient"
+
+
+def _unique(path: Path) -> Path:
+    if not path.exists():
+        return path
+    i = 2
+    while True:
+        candidate = path.with_name(f"{path.stem} ({i}){path.suffix}")
+        if not candidate.exists():
+            return candidate
+        i += 1
+
+
+def protect_file(src, recipient: str, note: str = "", *, settings: Settings,
+                 ledger: Optional[Ledger] = None, output_dir=None, title: str = "") -> ProtectResult:
+    src = Path(src)
+    recipient = recipient.strip()
+    if not recipient:
+        raise ValueError("Please enter who this copy is for.")
+    data = src.read_bytes()
+    key = settings.key_bytes
+    record = read_existing_record(data, src.name, key)
+    reshared = record is not None
+    parent = record.chain[-1].hop_id if record and record.chain else None
+    if record is None:
+        record = Record.new(settings.owner_name or "Unknown owner", settings.organization, title or src.stem)
+    hop = record.add_hop(recipient, note, issued_by=settings.owner_name)
+    opts = EmbedOptions(**{k: v for k, v in settings.layers.items() if k in EmbedOptions.__dataclass_fields__})
+    out_bytes, report = protect_bytes(data, src.name, record, key, opts)
+
+    out_dir = Path(output_dir or settings.output_folder or src.parent)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stem = re.sub(r" - for .+$", "", src.stem) if reshared else src.stem
+    name = settings.filename_pattern.format(stem=stem, recipient=_safe_name(recipient), ext=src.suffix)
+    out = _unique(out_dir / name)
+    out.write_bytes(out_bytes)
+
+    (ledger or Ledger()).add(Issue(hop.hop_id, record.doc_id, parent, recipient, note,
+                                   record.owner, settings.owner_name, str(src), str(out), hop.timestamp))
+    return ProtectResult(src, out, record, report, reshared)
+
+
+def build_report(name: str, result: TraceResult, ledger: Optional[Ledger] = None) -> TraceReport:
+    ledger = ledger or Ledger()
+    layer_status = [(n, f.found, f.detail) for n, f in result.findings.items()]
+    if result.error:
+        return TraceReport(name, result, "error", result.error, layer_status=layer_status)
+    if not result.found_anything:
+        return TraceReport(name, result, "none", "No VeilMark watermark was found in this file.",
+                           layer_status=layer_status)
+    if not result.authentic:
+        return TraceReport(name, result, "foreign",
+                           "A VeilMark watermark is present, but it was made with a different team key.",
+                           layer_status=layer_status)
+
+    rep = TraceReport(name, result, "authentic", "", layer_status=layer_status)
+    record = result.best_record
+    if record:
+        rep.owner, rep.organization, rep.title = record.owner, record.organization, record.title
+        rep.doc_id, rep.created = record.doc_id, record.created
+        for i, hop in enumerate(record.chain, 1):
+            rep.chain.append(ChainEntry(i, hop.recipient, hop.note, hop.timestamp, hop.hop_id, hop.issued_by))
+    # tokens may reveal a *longer* chain than a stale record (e.g. record stripped after a re-share)
+    known = {c.hop_id for c in rep.chain}
+    for tok in result.tokens:
+        if not tok.authentic or tok.hop_id in known:
+            continue
+        if rep.doc_id and tok.doc_id != rep.doc_id:
+            continue
+        known.add(tok.hop_id)
+        rep.doc_id = rep.doc_id or tok.doc_id
+        issue = ledger.get(tok.hop_id)
+        if issue:
+            rep.owner = rep.owner or issue.owner
+            rep.chain.append(ChainEntry(len(rep.chain) + 1, issue.recipient, issue.note, issue.timestamp,
+                                        tok.hop_id, issue.issued_by, source="ledger"))
+        else:
+            rep.chain.append(ChainEntry(len(rep.chain) + 1, "(issued on another computer)", "", "",
+                                        tok.hop_id, source="token only"))
+    rep.chain.sort(key=lambda c: c.timestamp or "9999")
+    for i, c in enumerate(rep.chain, 1):
+        c.step = i
+    if rep.chain:
+        rep.likely_source = rep.chain[-1]
+        rep.headline = f"Protected copy issued to {rep.likely_source.recipient}"
+    else:
+        rep.headline = "Authentic VeilMark watermark found"
+    return rep
+
+
+def trace_file(path, *, settings: Settings, ledger: Optional[Ledger] = None) -> TraceReport:
+    path = Path(path)
+    result = trace_bytes(path.read_bytes(), path.name, settings.key_bytes)
+    return build_report(path.name, result, ledger)
+
+
+def trace_pasted_text(text: str, *, settings: Settings, ledger: Optional[Ledger] = None) -> TraceReport:
+    return build_report("Pasted text", trace_text(text, settings.key_bytes), ledger)
+
+
+__all__ = ["protect_file", "trace_file", "trace_pasted_text", "TraceReport", "ProtectResult", "now_iso"]
