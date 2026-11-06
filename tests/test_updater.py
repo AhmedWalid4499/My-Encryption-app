@@ -2,7 +2,7 @@ import hashlib
 import re
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -129,8 +129,10 @@ def test_source_checkout_never_self_installs():
 
 
 def test_mac_install_script_quotes_paths(tmp_path):
-    script = updater.mac_install_script(Path("/Users/sara/Library/Application Support/VeilMark/updates/u.dmg"),
-                                        Path("/Applications/VeilMark.app"), 4242)
+    # PurePosixPath: the script only ever runs on a Mac, but this test runs on Windows too
+    script = updater.mac_install_script(
+        PurePosixPath("/Users/sara/Library/Application Support/VeilMark/updates/u.dmg"),
+        PurePosixPath("/Applications/VeilMark.app"), 4242)
     assert "PID=4242" in script
     assert "DMG='/Users/sara/Library/Application Support/VeilMark/updates/u.dmg'" in script
     assert "APP=/Applications/VeilMark.app" in script and 'open "$APP"' in script
