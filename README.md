@@ -23,11 +23,9 @@ It is a re-engineering of the thesis Mathematica code (`InsertSecretMessage`, `E
 
 ## Getting the Windows app
 
-**Download the latest installer:**
-https://raw.githubusercontent.com/AhmedWalid4499/My-Encryption-app/HEAD/releases/VeilMark-Setup.exe
-
-It lives in this repository's [`releases/`](releases/) folder, next to `latest.json` (version, size, SHA-256).
-It's a normal Windows installer and needs no admin rights.
+**Download:** open the [`releases/`](https://github.com/AhmedWalid4499/My-Encryption-app/tree/HEAD/releases) folder
+and download the newest `VeilMark-Setup-<version>.exe`. It's a normal Windows installer and needs no admin rights.
+Every version is kept there, and `latest.json` says which one is newest.
 
 Windows SmartScreen may say *"Windows protected your PC"* because the app isn't code-signed yet. Click
 **More info**, then **Run anyway**.
@@ -43,7 +41,7 @@ kept. You can turn this off, or check manually, under **Settings → Updates**.
 branch. GitHub Actions then:
 1. runs all tests on Linux and Windows,
 2. builds the app, embeds and extracts a watermark with the built program, and test-installs the installer,
-3. only if all of that passes, commits the new `VeilMark-Setup.exe` and `latest.json` into `releases/`.
+3. only if all of that passes, commits `VeilMark-Setup-<version>.exe` and an updated `latest.json` into `releases/`.
 
 Every installed copy picks it up automatically. Nothing is published if any check fails, or if the version number
 didn't go up.

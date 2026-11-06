@@ -1,8 +1,8 @@
 """Automatic updates from GitHub Releases.
 
 1. ``check()`` reads ``releases/latest.json`` from the GitHub repository (the build workflow
-   writes it, together with ``releases/VeilMark-Setup.exe``, whenever a new version passes
-   all tests) and compares versions.
+   writes it, together with ``releases/VeilMark-Setup-<version>.exe``, whenever a new version
+   passes all tests) and compares versions.
 2. ``download()`` fetches the installer in the background and verifies its SHA-256
    checksum from the manifest before it is ever run.
 3. ``launch_installer()`` starts the installer silently; it closes VeilMark,
@@ -31,8 +31,7 @@ GITHUB_REPO = "AhmedWalid4499/My-Encryption-app"
 RAW_BASE = f"https://raw.githubusercontent.com/{GITHUB_REPO}/HEAD/releases"
 MANIFEST_URL = f"{RAW_BASE}/latest.json"
 RELEASES_PAGE = f"https://github.com/{GITHUB_REPO}/tree/HEAD/releases"
-INSTALLER_NAME = "VeilMark-Setup.exe"
-DOWNLOAD_URL = f"{RAW_BASE}/{INSTALLER_NAME}"
+INSTALLER_NAME = "VeilMark-Setup.exe"  # fallback only; latest.json names the versioned EXE
 USER_AGENT = f"VeilMark-Updater/{__version__}"
 
 

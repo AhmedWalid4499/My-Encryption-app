@@ -12,7 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SHA = "ab" * 32
 
 
-def _manifest(version, sha=SHA, installer="VeilMark-Setup.exe", size=123):
+def _manifest(version, sha=SHA, installer=None, size=123):
+    installer = installer or f"VeilMark-Setup-{version}.exe"
     return {"version": version, "installer": installer, "sha256": sha, "size": size, "notes": "n"}
 
 
@@ -31,7 +32,7 @@ def test_reads_manifest_from_repo_releases_folder():
     info = updater.check(fetch=fetch)
     assert seen == ["https://raw.githubusercontent.com/AhmedWalid4499/My-Encryption-app/HEAD/releases/latest.json"]
     assert info.version == "99.0.0" and info.size == 123 and info.sha256 == SHA
-    assert info.url.endswith("/HEAD/releases/VeilMark-Setup.exe")
+    assert info.url.endswith("/HEAD/releases/VeilMark-Setup-99.0.0.exe")
 
 
 def test_up_to_date_or_unverifiable_manifest_is_ignored():

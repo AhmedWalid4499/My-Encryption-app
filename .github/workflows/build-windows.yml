@@ -131,19 +131,20 @@ jobs:
           }
           if ([version]$v -le [version]$published) { "Version $v is already published ($published) - nothing to do."; exit 0 }
           New-Item -ItemType Directory -Force releases | Out-Null
-          Copy-Item dist/VeilMark-Setup.exe releases/VeilMark-Setup.exe -Force
+          $exe = "VeilMark-Setup-$v.exe"              # every version keeps its own EXE in releases/
+          Copy-Item dist/VeilMark-Setup.exe "releases/$exe" -Force
           $manifest = [ordered]@{
             version   = $v
-            installer = "VeilMark-Setup.exe"
-            sha256    = (Get-FileHash releases/VeilMark-Setup.exe -Algorithm SHA256).Hash.ToLower()
-            size      = (Get-Item releases/VeilMark-Setup.exe).Length
+            installer = $exe
+            sha256    = (Get-FileHash "releases/$exe" -Algorithm SHA256).Hash.ToLower()
+            size      = (Get-Item "releases/$exe").Length
             published = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
             commit    = "${{ github.sha }}"
           }
           $manifest | ConvertTo-Json | Set-Content -Encoding utf8NoBOM releases/latest.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add releases/latest.json releases/VeilMark-Setup.exe
+          git add releases/latest.json "releases/$exe"
           git commit -m "Release VeilMark $v [skip ci]"
           git push origin "HEAD:${{ github.ref_name }}"
           if ($LASTEXITCODE -ne 0) { Write-Error "push failed (the branch moved?) - push again to retry"; exit 1 }
