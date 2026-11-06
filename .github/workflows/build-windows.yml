@@ -1,4 +1,4 @@
-name: Test & build Windows app
+name: Test & build Windows and Mac apps
 
 on:
   push:
@@ -149,3 +149,145 @@ jobs:
           git push origin "HEAD:${{ github.ref_name }}"
           if ($LASTEXITCODE -ne 0) { Write-Error "push failed (the branch moved?) - push again to retry"; exit 1 }
           "Published VeilMark $v to releases/"
+
+  build-macos:
+    # Apple silicon natively; Intel with an Intel (x64) Python running under Rosetta on the same runner.
+    runs-on: macos-latest
+    timeout-minutes: 45
+    needs: test-linux
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            python-arch: arm64
+            label: AppleSilicon
+          - arch: x86_64
+            python-arch: x64
+            label: Intel
+    defaults:
+      run:
+        # setup-python's "x64" Python is a universal binary that would still run natively on Apple silicon:
+        # start every step under the wanted architecture (Rosetta for Intel); child processes inherit it
+        shell: arch -${{ matrix.arch }} /bin/bash -e {0}
+    env:
+      VEILMARK_TARGET_ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          architecture: ${{ matrix.python-arch }}
+      - name: Check the Python processor type
+        run: |
+          m=$(python -c "import platform; print(platform.machine())")
+          echo "Python runs as $m"
+          [ "$m" = "${{ matrix.arch }}" ] || { echo "expected ${{ matrix.arch }}"; exit 1; }
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then
+            # the universal2 Python would let pip pick Apple-silicon-only wheels: ask for Intel ones only
+            echo "_PYTHON_HOST_PLATFORM=macosx-14.0-x86_64" >> "$GITHUB_ENV"
+            # newer releases of some libraries no longer ship Intel-Mac wheels: never compile them, take the newest
+            # release that still has a prebuilt Intel wheel instead
+            echo "PIP_ONLY_BINARY=cryptography,cffi,numpy,lxml,pillow,pyside6,pyside6-essentials,pyside6-addons,shiboken6" >> "$GITHUB_ENV"
+          fi
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Run tests on the Mac (incl. cross-platform cipher vectors)
+        run: python -m pytest -q
+        env:
+          QT_QPA_PLATFORM: offscreen
+      - name: Read app version
+        id: ver
+        run: |
+          v=$(python -c "import veilmark; print(veilmark.__version__)")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF" == refs/tags/v* && "$GITHUB_REF_NAME" != "v$v" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match app version $v (veilmark/__init__.py)"; exit 1
+          fi
+      - name: Build VeilMark.app with PyInstaller
+        run: pyinstaller packaging/veilmark-macos.spec --noconfirm --clean
+      - name: Sign (ad hoc) and build the disk image
+        run: |
+          bash packaging/make_dmg.sh
+          test -f dist/VeilMark-macOS-${{ matrix.label }}.dmg
+      - name: Smoke-test the app inside the disk image (embed + extract a real PowerPoint)
+        env:
+          VEILMARK_HOME: ${{ runner.temp }}/vmhome
+        run: |
+          set -e
+          MNT=$(mktemp -d)
+          hdiutil attach -nobrowse -readonly -mountpoint "$MNT" dist/VeilMark-macOS-${{ matrix.label }}.dmg
+          CLI="$MNT/VeilMark.app/Contents/MacOS/veilmark-cli"
+          v=$("$CLI" --version); echo "$v"
+          [[ "$v" == *"${{ steps.ver.outputs.version }}"* ]] || { echo "app reports '$v'"; exit 1; }
+          codesign --verify --deep --strict "$MNT/VeilMark.app"
+          python -c "import sys; sys.path.insert(0, 'tests'); from samples import make_pptx; make_pptx('${{ runner.temp }}/smoke.pptx')"
+          "$CLI" embed "${{ runner.temp }}/smoke.pptx" --text "CI smoke test" --footer
+          out=$("$CLI" extract "${{ runner.temp }}/smoke - watermarked.pptx"); echo "$out"
+          hdiutil detach "$MNT"
+          grep -q "Watermark text: CI smoke test" <<< "$out" || { echo "built app could not extract the watermark"; exit 1; }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VeilMark-macOS-${{ matrix.label }}
+          path: dist/VeilMark-macOS-${{ matrix.label }}.dmg
+      - name: Publish release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: VeilMark ${{ steps.ver.outputs.version }}
+          files: dist/VeilMark-macOS-${{ matrix.label }}.dmg
+
+  publish-macos:
+    # After the Windows job has published (so the two never push at the same moment), put the Mac disk images and
+    # their manifests into releases/. Installed Mac copies read releases/latest-macos-<arm64|x86_64>.json.
+    needs: [build-windows, build-macos]
+    if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}   # the branch tip, including the Windows release commit
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: VeilMark-macOS-*
+          merge-multiple: true
+          path: dist
+      - name: Publish to the releases/ folder (new version only)
+        run: |
+          set -e
+          ls -l dist
+          python3 - <<'PY'
+          import datetime, hashlib, json, os, re, shutil
+          from pathlib import Path
+          v = re.search(r'__version__ = "(.+?)"', Path("veilmark/__init__.py").read_text()).group(1)
+          ver = lambda s: tuple(int(n) for n in re.findall(r"\d+", s or "0")[:4])
+          Path("releases").mkdir(exist_ok=True)
+          changed = []
+          for arch, label in (("arm64", "AppleSilicon"), ("x86_64", "Intel")):
+              dmg, manifest = Path(f"dist/VeilMark-macOS-{label}.dmg"), Path(f"releases/latest-macos-{arch}.json")
+              if not dmg.exists():
+                  print(f"No {label} build in this run - skipped."); continue
+              published = json.loads(manifest.read_text())["version"] if manifest.exists() else "0.0.0"
+              if ver(v) <= ver(published):
+                  print(f"{label}: version {v} is already published ({published})."); continue
+              name = f"VeilMark-macOS-{label}-{v}.dmg"   # every version keeps its own disk image in releases/
+              shutil.copyfile(dmg, f"releases/{name}")
+              data = Path(f"releases/{name}").read_bytes()
+              manifest.write_text(json.dumps({
+                  "version": v, "installer": name, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data),
+                  "published": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                  "commit": os.environ["GITHUB_SHA"]}, indent=2) + "\n")
+              changed += [f"releases/{name}", str(manifest)]
+          Path("changed.txt").write_text("\n".join(changed))
+          PY
+          if [ ! -s changed.txt ]; then echo "Nothing new to publish."; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          xargs git add < changed.txt
+          git commit -m "Release VeilMark for Mac $(python3 -c 'import veilmark; print(veilmark.__version__)') [skip ci]"
+          for i in 1 2 3 4; do
+            git push origin "HEAD:${{ github.ref_name }}" && { echo "Published the Mac build to releases/"; exit 0; }
+            sleep $((i * 5)); git pull --rebase origin "${{ github.ref_name }}"
+          done
+          echo "push failed - push again to retry"; exit 1

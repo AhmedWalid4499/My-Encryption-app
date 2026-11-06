@@ -1,4 +1,4 @@
-"""Draws the VeilMark shield icon (assets/veilmark.ico + .png). Run: python assets/make_icon.py"""
+"""Draws the VeilMark shield icon (assets/veilmark.ico, .icns for the Mac, .png). Run: python assets/make_icon.py"""
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter
@@ -32,4 +32,9 @@ if __name__ == "__main__":
     big = draw()
     big.resize((256, 256), Image.LANCZOS).save(here / "veilmark.png")
     big.save(here / "veilmark.ico", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    # Mac app icon: Apple's grid leaves ~10% transparent margin around the artwork
+    mac = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    inset = int(S * 0.8)
+    mac.alpha_composite(big.resize((inset, inset), Image.LANCZOS), ((S - inset) // 2, (S - inset) // 2))
+    mac.save(here / "veilmark.icns")
     print("icon written")

@@ -64,10 +64,16 @@ def run_in_background(fn, on_done=None, on_failed=None, on_progress=None) -> Wor
     return w
 
 
+REVEAL_LABEL = "Show in Finder" if sys.platform == "darwin" else "Show in folder"
+
+
 def reveal_in_explorer(path: Path) -> None:
+    """Open Explorer / Finder with the file selected."""
     path = Path(path)
     if sys.platform == "win32" and path.exists():
         subprocess.Popen(["explorer", "/select,", str(path)])  # noqa: S603,S607
+    elif sys.platform == "darwin" and path.exists():
+        subprocess.Popen(["open", "-R", str(path)])  # noqa: S603,S607
     else:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.parent if path.is_file() else path)))
 

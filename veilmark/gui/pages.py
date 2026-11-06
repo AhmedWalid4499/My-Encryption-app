@@ -21,7 +21,8 @@ from ..service import TraceReport, protect_file, trace_file, trace_pasted_text
 from ..settings import Settings
 from ..watermark.engine import SUPPORTED_PROTECT
 from . import icons, style
-from .widgets import Banner, Card, DropZone, FileList, label, open_path, reveal_in_explorer, run_in_background
+from .widgets import (REVEAL_LABEL, Banner, Card, DropZone, FileList, label, open_path, reveal_in_explorer,
+                      run_in_background)
 
 OFFICE_FILTER = ("Documents (*.docx *.pptx *.xlsx *.docm *.pptm *.xlsm *.png *.bmp *.tif *.tiff *.txt *.csv *.md "
                  "*.html *.htm);;Word (*.docx *.docm);;PowerPoint (*.pptx *.pptm);;Excel (*.xlsx *.xlsm);;"
@@ -173,7 +174,7 @@ class HomePage(Page):
                          "</span>")
             h.addWidget(lab, 1)
             if Path(it.output_file).exists():
-                b = QPushButton("Show in folder")
+                b = QPushButton(REVEAL_LABEL)
                 b.clicked.connect(lambda _=False, p=Path(it.output_file): reveal_in_explorer(p))
                 h.addWidget(b)
             self.recent_lay.addWidget(row)
@@ -417,7 +418,7 @@ class EmbedPage(Page):
                 tick.setPixmap(icons.pixmap("check", style.GOOD, 26, 2.0))
                 row.addWidget(tick)
                 row.addWidget(lab, 1)
-                b1 = QPushButton("Show in folder")
+                b1 = QPushButton(REVEAL_LABEL)
                 b1.clicked.connect(lambda _=False, p=res.output: reveal_in_explorer(p))
                 b2 = QPushButton("Open")
                 b2.clicked.connect(lambda _=False, p=res.output: open_path(p))
@@ -663,7 +664,7 @@ class ExtractPage(Page):
         layers = "".join(f"<li>{'✔' if ok else '✖'} {html.escape(n)} — {html.escape(d)}</li>"
                          for n, ok, d in rep.layer_status)
         Path(dest).write_text(f"""<!doctype html><meta charset="utf-8"><title>VeilMark watermark report</title>
-<style>body{{font-family:Segoe UI,Arial;margin:40px;color:#1f2233}}td,th{{border:1px solid #ddd;padding:6px 10px}}
+<style>body{{font-family:-apple-system,Segoe UI,Helvetica Neue,Arial;margin:40px;color:#1f2233}}td,th{{border:1px solid #ddd;padding:6px 10px}}
 table{{border-collapse:collapse}}</style>
 <h1>VeilMark watermark report</h1><p>Generated {dt.datetime.now():%d %b %Y %H:%M} with VeilMark {__version__}</p>
 <p>File: {html.escape(rep.file)}</p><h2>Watermark: {html.escape(rep.message or '(none)')}</h2>
@@ -889,7 +890,7 @@ class _CryptoPage(Page):
                              f"from {html.escape(src.name)}</span>")
                 lab.setWordWrap(True)
                 row.addWidget(lab, 1)
-                b1 = QPushButton("Show in folder")
+                b1 = QPushButton(REVEAL_LABEL)
                 b1.clicked.connect(lambda _=False, p=out: reveal_in_explorer(p))
                 row.addWidget(b1)
                 if not self.ENCRYPT:

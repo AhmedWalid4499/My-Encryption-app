@@ -108,5 +108,5 @@ def write_bytes(path, data: bytes) -> None:
             raise FileAccessError(f"VeilMark couldn't save “{path.name}”: {exc.strerror or exc}.") from exc
     raise FileAccessError(
         f"VeilMark isn't allowed to save “{path.name}” in {path.parent}. The folder may be read-only or "
-        "protected (for example by Windows ‘Controlled folder access’), or a file with that name is open in "
+        "protected (for example by Windows ‘Controlled folder access’ or the Mac’s Privacy & Security settings), or a file with that name is open in "
         f"another program.{_cloud_hint(path)} You can choose a different save folder in the options.") from last

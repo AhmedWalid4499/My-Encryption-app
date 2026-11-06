@@ -1,4 +1,5 @@
-"""User settings and the team watermark key, stored in %APPDATA%\\VeilMark (Windows)."""
+"""User settings and the team watermark key, stored in %APPDATA%\\VeilMark (Windows) or
+~/Library/Application Support/VeilMark (Mac)."""
 
 from __future__ import annotations
 

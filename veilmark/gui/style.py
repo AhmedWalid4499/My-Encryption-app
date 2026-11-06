@@ -1,5 +1,8 @@
 """Colours and the Qt style sheet - a calm, light, rounded look."""
 
+import re
+import sys
+
 ACCENT = "#5B4FE0"
 ACCENT_DARK = "#4A3FC4"
 ACCENT_SOFT = "#EEECFD"
@@ -17,7 +20,7 @@ BAD_SOFT = "#FCEBEE"
 SIDEBAR = "#1E1B3A"
 
 QSS = f"""
-* {{ font-family: "Segoe UI", "Inter", "Helvetica Neue", Arial, sans-serif; font-size: 10.5pt; color: {TEXT}; }}
+* {{ font-family: "Segoe UI", "Helvetica Neue", "Inter", Arial, sans-serif; font-size: 10.5pt; color: {TEXT}; }}
 QMainWindow, #Page {{ background: {BG}; }}
 QToolTip {{ background: {TEXT}; color: white; border: none; padding: 6px 8px; border-radius: 6px; }}
 
@@ -108,6 +111,16 @@ QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; }}
 #WatermarkEdit {{ font-size: 12pt; }}
 #WatermarkResult {{ font-size: 16pt; font-weight: 700; color: {ACCENT_DARK}; background: {ACCENT_SOFT};
     border-radius: 10px; padding: 14px 16px; }}
-#KeyLabel {{ font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace; font-size: 10.5pt;
+#KeyLabel {{ font-family: "Cascadia Mono", Consolas, Menlo, "DejaVu Sans Mono", monospace; font-size: 10.5pt;
     background: #F3F3FA; border-radius: 8px; padding: 10px; }}
 """
+
+
+def _scale_points(qss: str, factor: float) -> str:
+    return re.sub(r"(\d+(?:\.\d+)?)pt\b", lambda m: f"{float(m.group(1)) * factor:.1f}pt", qss)
+
+
+# macOS draws 1pt = 1 pixel (72 dpi), Windows 1pt = 1.33 pixels (96 dpi). Scale the sizes up on a Mac so text is
+# exactly as large as on Windows instead of looking tiny.
+if sys.platform == "darwin":
+    QSS = _scale_points(QSS, 96 / 72)

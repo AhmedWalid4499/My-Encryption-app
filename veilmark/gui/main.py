@@ -170,7 +170,7 @@ def main() -> int:
     app.setStyle("Fusion")
     check = resource("check.svg").as_posix()
     app.setStyleSheet(style.QSS + f'QCheckBox::indicator:checked {{ image: url("{check}"); }}')
-    icon = resource("veilmark.ico")
+    icon = resource("veilmark.png" if sys.platform == "darwin" else "veilmark.ico")
     if icon.exists():
         app.setWindowIcon(QIcon(str(icon)))
     win = MainWindow()

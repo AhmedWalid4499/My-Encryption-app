@@ -1,6 +1,6 @@
 # VeilMark — invisible watermarks, leak tracing & chaotic encryption for Office files
 
-VeilMark is a Windows desktop app that:
+VeilMark is a desktop app for **Windows and Mac** that:
 
 1. **Protects** Word, PowerPoint and Excel files (plus PNG/BMP pictures and text files) with invisible,
    encrypted watermarks, giving every recipient a uniquely marked copy.
@@ -31,20 +31,57 @@ Windows SmartScreen may say *"Windows protected your PC"* because the app isn't 
 **More info**, then **Run anyway**.
 
 ### Automatic updates
-VeilMark reads `releases/latest.json` when it starts (and every 6 hours while open). If there's a newer version, it
-**downloads the installer in the background**, checks its SHA-256 checksum, and shows **"✨ Update ready – Click to
+VeilMark reads `releases/latest.json` (on a Mac: `latest-macos-arm64.json` or `latest-macos-x86_64.json`) when it starts (and every 6 hours while open). If there's a newer version, it
+**downloads the installer (or Mac disk image) in the background**, checks its SHA-256 checksum, and shows **"✨ Update ready – Click to
 install"** in the sidebar. One click closes the app, installs the update and reopens it. Settings and history are
 kept. You can turn this off, or check manually, under **Settings → Updates**.
 
 **Publishing a new version (for the maintainer):** raise the version in `veilmark/__init__.py`,
 `packaging/installer.iss` and `packaging/version_info.txt` (a test checks they match), then push to the default
 branch. GitHub Actions then:
-1. runs all tests on Linux and Windows,
-2. builds the app, embeds and extracts a watermark with the built program, and test-installs the installer,
-3. only if all of that passes, commits `VeilMark-Setup-<version>.exe` and an updated `latest.json` into `releases/`.
+1. runs all tests on Linux, Windows and Mac (Apple silicon and Intel),
+2. builds the Windows app and the two Mac apps, embeds and extracts a watermark with each built program, and
+   test-installs the Windows installer,
+3. only if all of that passes, commits `VeilMark-Setup-<version>.exe` + an updated `latest.json` and the Mac disk
+   images `VeilMark-macOS-<AppleSilicon|Intel>-<version>.dmg` + updated `latest-macos-*.json` into `releases/`.
+
+Every run also keeps the built files as downloadable *artifacts* on the GitHub Actions run page, so a test build
+can be tried before it is published.
 
 Every installed copy picks it up automatically. Nothing is published if any check fails, or if the version number
 didn't go up.
+
+## Getting the Mac app
+
+**Download:** open the [`releases/`](https://github.com/AhmedWalid4499/My-Encryption-app/tree/HEAD/releases) folder
+and download the newest disk image for your Mac (Apple menu  → *About This Mac*: "Chip: Apple M…" = Apple silicon,
+"Processor: Intel…" = Intel):
+
+* **Apple silicon (M1, M2, M3, M4 …):** `VeilMark-macOS-AppleSilicon-<version>.dmg`
+* **Intel Mac:** `VeilMark-macOS-Intel-<version>.dmg`
+
+Open the downloaded `.dmg` and drag **VeilMark** onto **Applications**. Needs macOS 14 Sonoma or newer.
+
+The first time only, macOS may say it *"cannot verify"* VeilMark, because the app isn't registered (notarised) with
+Apple. Click **Done**, open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to
+VeilMark (on macOS 14 Sonoma you can instead right-click VeilMark → **Open** → **Open**). After that it opens
+normally. If macOS asks whether VeilMark may access your Documents or Desktop folder, click **Allow**, otherwise it
+can't read or save files there.
+
+Everything works the same as on Windows: drag files onto the drop zones, *Show in Finder* opens the folder of a
+saved file, and updates install themselves (VeilMark quits, replaces itself in *Applications* and reopens). Files
+watermarked or encrypted on a Mac open on Windows and the other way round.
+
+The command line tool is inside the app:
+
+```bash
+/Applications/VeilMark.app/Contents/MacOS/veilmark-cli extract "found online.pptx"
+```
+
+**Build it yourself on a Mac:** install Python 3.11+ (python.org or Homebrew), then run `bash build_macos.sh`
+(it installs dependencies, runs the tests, builds `dist/VeilMark.app` and the `.dmg`).
+
+## Building and publishing
 
 **Build it yourself on Windows:** install Python 3.11+ from python.org, then double-click `build_windows.bat`
 (it installs dependencies, runs the tests and builds `dist\VeilMark\VeilMark.exe`; if Inno Setup 6 is
@@ -95,10 +132,10 @@ Drop any file onto **Extract watermark**, or paste text copied from an email, we
 You can save the result as an HTML report.
 
 ### Updates never make VeilMark forget
-* Your settings and History live in `%APPDATA%\VeilMark`. The installer never touches that folder, so updates keep
-  everything.
+* Your settings and History live in `%APPDATA%\VeilMark` on Windows and `~/Library/Application Support/VeilMark`
+  on a Mac. Updates never touch that folder, so they keep everything.
 * The watermark key is **built into the app**: there's no key to manage. Any copy of VeilMark can read a VeilMark
-  watermark, on any PC.
+  watermark, on any PC or Mac.
 * Files watermarked with VeilMark 1.0–1.3, which used a per-PC "team key", still extract. That old key stays stored
   on your PC (`settings.json` / `keyring.json`) and is tried automatically.
 * If the settings file is ever damaged or locked, VeilMark restores it from `settings.backup.json`.
@@ -124,7 +161,8 @@ Open **Decrypt**, drop the `.vmk` files, type the password and click **Decrypt**
 its original name.
 
 ### Command line
-`veilmark-cli.exe` (or `python run_veilmark.py …`) is included for batch work:
+`veilmark-cli.exe` (Mac: `VeilMark.app/Contents/MacOS/veilmark-cli`, or `python run_veilmark.py …` anywhere)
+is included for batch work:
 
 ```bash
 veilmark-cli embed "Q3 plan.pptx" "Budget.xlsx" --text "© 2026 BookBeans – Confidential" --to "Sara Ahmed" --footer
@@ -190,7 +228,7 @@ Changes from the Mathematica version, and why:
   conditions of every chaotic system, so the same file encrypted twice gives different output.
 * **Fixed-step RK4 instead of `NDSolve`.** Adaptive solvers are not bit-for-bit reproducible across PCs. A fixed
   step in IEEE float64 is, which means a file encrypted on one computer always decrypts on another. Known-answer
-  tests check this on Windows CI.
+  tests check this on Windows and Mac CI.
 * **Bytes instead of median-thresholded bits**, sampled from many parallel trajectories. The keystream is 8× denser
   and fast enough for real files (about 1.4 s for 5 MB).
 * **The `enc` state machine.** Its transitions don't depend on the data, so per byte it equals
@@ -223,8 +261,8 @@ veilmark/
   service.py           protect_file / trace_file used by GUI and CLI
   gui/                 PySide6 (Qt) desktop interface
   cli.py               command line
-tests/                 104 tests incl. LibreOffice re-save, Inspect-Document, slide-copy, multi-hop, cross-PC vectors
-packaging/             PyInstaller spec, Inno Setup installer script, Windows version info
+tests/                 109 tests incl. LibreOffice re-save, Inspect-Document, slide-copy, multi-hop, cross-PC vectors
+packaging/             PyInstaller specs (Windows, Mac), Inno Setup installer, Mac disk image script, version info
 ```
 
 Run the tests:
