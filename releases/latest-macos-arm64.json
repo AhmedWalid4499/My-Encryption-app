@@ -1,8 +1,10 @@
 {
-  "version": "1.5.1",
-  "installer": "VeilMark-macOS-AppleSilicon-1.5.1.dmg",
-  "sha256": "bd253358813b3da357a5b90361141dc27946b04abc2380b27fbcd53c2b863169",
-  "size": 66066690,
-  "published": "2026-11-06T12:24:42Z",
-  "commit": "de18980159c6bbd89ce6ce9581dedbea75d96ec2"
+  "version": "1.5.2",
+  "installer": "VeilMark-macOS-AppleSilicon-1.5.2.dmg",
+  "sha256": "8ce2611a8ecd6a5b08467878e455f79124204818ec98adff1b56722564eb95b8",
+  "size": 66029221,
+  "setup": "VeilMark-macOS-AppleSilicon-Installer-1.5.2.pkg",
+  "setup_sha256": "a3f2aad9533b072b39d81339f83a1233ee64e7b3cec6506649295750d3c733a6",
+  "published": "2026-11-06T13:27:21Z",
+  "commit": "787dea7476ab61b3daac53fc6cb27ace27de265a"
 }
