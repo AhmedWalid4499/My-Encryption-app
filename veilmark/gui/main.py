@@ -175,6 +175,15 @@ def main() -> int:
         app.setWindowIcon(QIcon(str(icon)))
     win = MainWindow()
     win.show()
+    if sys.platform == "darwin":
+        from PySide6.QtCore import QTimer
+        from PySide6.QtWidgets import QMessageBox
+
+        from .. import macos, updater
+
+        note = macos.startup_check(updater.mac_app_bundle())
+        if note:
+            QTimer.singleShot(600, lambda: QMessageBox.information(win, "Move VeilMark to Applications", note))
     win.updates.start()
     return app.exec()
 

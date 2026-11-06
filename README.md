@@ -71,6 +71,11 @@ Apple. Click **Done**, open **System Settings → Privacy & Security**, scroll d
 the installer, then confirm. If macOS asks whether VeilMark may access your Documents or Desktop folder, click
 **Allow**, otherwise it can't read or save files there.
 
+You only confirm this **once**: VeilMark then removes macOS's "downloaded from the internet" flag from itself, and
+updates install without it, so later launches and new versions open straight away. (If VeilMark is started from
+Downloads or straight from the disk image, macOS checks it again every time; VeilMark notices and asks you to move
+it into Applications.) Getting rid of the very first prompt too needs a paid Apple Developer ID to notarise the app.
+
 Prefer drag-and-drop? The same version is also there as a disk image, `VeilMark-macOS-<AppleSilicon|Intel>-<version>.dmg`:
 open it and drag **VeilMark** onto **Applications**.
 
@@ -260,6 +265,7 @@ veilmark/
   watermark/engine.py  the five layers: embed + trace
   watermark/footer.py  optional visible "Confidential – prepared for …" footer
   updater.py           reads releases/latest.json, verified download, silent install
+  macos.py             Mac launch housekeeping (ask "open this app?" only once)
   appkey.py            the watermark key built into the app
   fileio.py            safe reads/writes (lock retries, atomic save, read-back check)
   registry.py          SQLite sharing history (%APPDATA%\VeilMark\ledger.db)
@@ -267,7 +273,7 @@ veilmark/
   service.py           protect_file / trace_file used by GUI and CLI
   gui/                 PySide6 (Qt) desktop interface
   cli.py               command line
-tests/                 115 tests incl. LibreOffice re-save, Inspect-Document, slide-copy, multi-hop, cross-PC vectors
+tests/                 118 tests incl. LibreOffice re-save, Inspect-Document, slide-copy, multi-hop, cross-PC vectors
 packaging/             PyInstaller specs (Windows, Mac), Inno Setup installer, Mac installer wizard (.pkg) + disk image scripts
 ```
 
