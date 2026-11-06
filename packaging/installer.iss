@@ -40,4 +40,16 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\VeilMark.exe"; Tasks: desktop
 [Run]
 Filename: "{app}\VeilMark.exe"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 ; after a silent in-app update, reopen VeilMark automatically
-Filename: "{app}\VeilMark.exe"; Flags: nowait; Check: WizardSilent
+Filename: "{app}\VeilMark.exe"; Flags: nowait; Check: ShouldRelaunch
+
+[Code]
+{ Reopen VeilMark after a silent in-app update, unless /NOLAUNCH is given (used by the CI install test). }
+function ShouldRelaunch: Boolean;
+var
+  i: Integer;
+begin
+  Result := WizardSilent;
+  for i := 1 to ParamCount do
+    if CompareText(ParamStr(i), '/NOLAUNCH') = 0 then
+      Result := False;
+end;

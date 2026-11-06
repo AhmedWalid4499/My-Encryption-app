@@ -80,12 +80,15 @@ jobs:
           }
           iscc /DAppVersion=${{ steps.ver.outputs.version }} packaging\installer.iss
       - name: Test the installer (silent install, then run the installed copy)
+        timeout-minutes: 5
         shell: pwsh
         run: |
           $dir = "${{ runner.temp }}\vm-install"
-          Start-Process -Wait -FilePath dist\VeilMark-Setup.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=`"$dir`""
-          Start-Sleep 3
-          Get-Process VeilMark -ErrorAction SilentlyContinue | Stop-Process -Force   # silent installs relaunch the app
+          # wait for the installer process only (Start-Process -Wait would also wait for anything it launches)
+          $p = Start-Process -PassThru -FilePath dist\VeilMark-Setup.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/NOLAUNCH","/DIR=`"$dir`""
+          $p.WaitForExit()
+          if ($p.ExitCode -ne 0) { Write-Error "installer exit code $($p.ExitCode)"; exit 1 }
+          Get-Process VeilMark -ErrorAction SilentlyContinue | Stop-Process -Force
           $v = & "$dir\veilmark-cli.exe" --version
           $v
           if ($v -notmatch "${{ steps.ver.outputs.version }}") { Write-Error "installed copy reports '$v'"; exit 1 }
