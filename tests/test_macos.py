@@ -1,15 +1,15 @@
 """Mac launch housekeeping: macOS should ask about VeilMark only once."""
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from veilmark import macos
 
 
 def test_detects_copies_macos_keeps_checking():
-    trans = Path("/private/var/folders/ab/xyz/T/AppTranslocation/1F2E-UUID/d/VeilMark.app")
+    trans = PurePosixPath("/private/var/folders/ab/xyz/T/AppTranslocation/1F2E-UUID/d/VeilMark.app")
     assert macos.location_problem(trans) == "translocated"
-    assert macos.location_problem(Path("/Volumes/VeilMark/VeilMark.app")) == "disk image"
-    assert macos.location_problem(Path("/Applications/VeilMark.app")) is None
-    assert macos.location_problem(Path("/Users/sara/Applications/VeilMark.app")) is None
+    assert macos.location_problem(PurePosixPath("/Volumes/VeilMark/VeilMark.app")) == "disk image"
+    assert macos.location_problem(PurePosixPath("/Applications/VeilMark.app")) is None
+    assert macos.location_problem(PurePosixPath("/Users/sara/Applications/VeilMark.app")) is None
     assert "Applications" in macos.move_to_applications_message("translocated")
 
 

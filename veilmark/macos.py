@@ -23,7 +23,7 @@ QUARANTINE = "com.apple.quarantine"
 
 def location_problem(app: Path) -> Optional[str]:
     """Why macOS will keep asking about this copy of VeilMark.app: "translocated", "disk image" or None."""
-    path = str(app)
+    path = app.as_posix()
     if "/AppTranslocation/" in path:
         return "translocated"
     if path.startswith("/Volumes/"):
