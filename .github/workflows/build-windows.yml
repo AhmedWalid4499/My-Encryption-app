@@ -209,6 +209,13 @@ jobs:
           fi
       - name: Build VeilMark.app with PyInstaller
         run: pyinstaller packaging/veilmark-macos.spec --noconfirm --clean
+      - name: Check the app's Info.plist (a normal, foreground Mac app)
+        run: |
+          PL=dist/VeilMark.app/Contents/Info.plist
+          plutil -p "$PL"
+          # regression: LSBackgroundOnly=true made macOS send all typing to the previously active app
+          [ "$(plutil -extract LSBackgroundOnly raw "$PL")" = "false" ] || { echo "app is marked background-only"; exit 1; }
+          [ "$(plutil -extract CFBundleExecutable raw "$PL")" = "VeilMark" ] || { echo "wrong main executable"; exit 1; }
       - name: Sign (ad hoc) and build the disk image
         run: |
           bash packaging/make_dmg.sh

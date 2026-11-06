@@ -48,6 +48,9 @@ app = BUNDLE(
         "LSApplicationCategoryType": "public.app-category.productivity",
         "LSMinimumSystemVersion": "14.0",
         "NSHighResolutionCapable": True,
+        # PyInstaller copies "console" from the last EXE in COLLECT (veilmark-cli) and would then mark the whole app
+        # LSBackgroundOnly: macOS never lets such an app become active, so typing went into the previous app.
+        "LSBackgroundOnly": False,
         # the app is designed in light colours: keep it light even when the Mac is in Dark Mode
         "NSRequiresAquaSystemAppearance": True,
         # shown when macOS asks for permission to read/save files in these folders
