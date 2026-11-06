@@ -1,8 +1,8 @@
 {
-  "version": "1.5.0",
-  "installer": "VeilMark-macOS-Intel-1.5.0.dmg",
-  "sha256": "d3fd2e27e196f1597fd6d1a39e52ada3e87e527d188c294cefa2f8f4f5919e10",
-  "size": 73516772,
-  "published": "2026-11-06T11:27:12Z",
-  "commit": "aed710f5b34e5be31fb35bd78b09cd09fc31786c"
+  "version": "1.5.1",
+  "installer": "VeilMark-macOS-Intel-1.5.1.dmg",
+  "sha256": "bbf415e2af5ca1da46196f1aa969b4766a54eb2c657300605b3506d8bb80181a",
+  "size": 73759775,
+  "published": "2026-11-06T12:24:42Z",
+  "commit": "de18980159c6bbd89ce6ce9581dedbea75d96ec2"
 }
