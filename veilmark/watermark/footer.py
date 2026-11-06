@@ -27,7 +27,11 @@ FOOTER_REL = R_NS + "/footer"
 FOOTER_CT = "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"
 
 MARK = "_VeilMarkFooter"          # Word bookmark name / PowerPoint shape name
-XL_MARK = "\u2060\u200b\u2060"     # invisible tag that identifies our Excel footer
+# Invisible tag identifying a footer VeilMark added. Built from characters the invisible-text watermark
+# never uses, so a watermark hidden inside the author's own footer can't be mistaken for our tag.
+FOOTER_MARK = "\u2061\u2064\u2061"
+LEGACY_XL_MARK = "\u2060\u200b\u2060"  # Excel footers made by 1.2.x (Excel footers never carry text marks)
+XL_MARK = FOOTER_MARK
 SHAPE_NAME = "VeilMark Footer"
 DEFAULT_TEMPLATE = "CONFIDENTIAL – Prepared for {recipient} · {organization} · {date}"
 
@@ -55,36 +59,40 @@ def _w(tag):
 # Word
 # --------------------------------------------------------------------------- #
 def _word_paragraph(text: str):
+    """Centred grey 8 pt paragraph. Tagged with invisible characters (not a bookmark: bookmark ids must be
+    unique across the whole document, and repeated ids make Word offer to "repair" the file)."""
     p = etree.Element(_w("p"))
     ppr = etree.SubElement(p, _w("pPr"))
     etree.SubElement(ppr, _w("jc")).set(_w("val"), "center")
-    bs = etree.SubElement(p, _w("bookmarkStart"))
-    bs.set(_w("id"), "9731")
-    bs.set(_w("name"), MARK)
     r = etree.SubElement(p, _w("r"))
     rpr = etree.SubElement(r, _w("rPr"))
     etree.SubElement(rpr, _w("color")).set(_w("val"), "808080")
     etree.SubElement(rpr, _w("sz")).set(_w("val"), "16")  # 8 pt
     t = etree.SubElement(r, _w("t"))
-    t.text = text
+    t.text = text + FOOTER_MARK
     t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
-    etree.SubElement(p, _w("bookmarkEnd")).set(_w("id"), "9731")
     return p
 
 
 def _is_our_word_paragraph(p) -> bool:
-    if any(b.get(_w("name")) == MARK for b in p.iter(_w("bookmarkStart"))):
+    from . import zerowidth
+
+    text = zerowidth.strip("".join(p.itertext()))  # ignore hidden watermark characters
+    if FOOTER_MARK in text:
         return True
-    text = "".join(p.itertext())
+    if any(b.get(_w("name")) == MARK for b in p.iter(_w("bookmarkStart"))):  # made by VeilMark 1.1-1.3
+        return True
     return text.upper().startswith("CONFIDENTIAL") and "prepared for" in text.lower()
 
 
 def _word_set_footer_part(pkg: Package, part: str, text: str) -> None:
     root = parse_xml(pkg.get(part))
-    for p in list(root.iter(_w("p"))):
+    # only top-level paragraphs VeilMark added itself; never touch paragraphs inside tables/text boxes
+    # (removing those can leave an empty table cell, which Word treats as a damaged file)
+    for p in list(root.findall(_w("p"))):
         if _is_our_word_paragraph(p):
-            p.getparent().remove(p)
-    root.append(_word_paragraph(text))
+            root.remove(p)
+    root.append(_word_paragraph(text))  # the footer is never left without a paragraph
     pkg.set(part, to_xml(root))
 
 
@@ -240,7 +248,8 @@ def _xl(pkg: Package, text: str) -> str:
             footer.text = ours
         else:
             existing = footer.text or ""
-            if XL_MARK in existing or "prepared for" in existing.lower() or not existing.strip():
+            if FOOTER_MARK in existing or LEGACY_XL_MARK in existing or "prepared for" in existing.lower() \
+                    or not existing.strip():
                 footer.text = ours
             elif "&C" not in existing:
                 footer.text = existing + ours
@@ -248,7 +257,9 @@ def _xl(pkg: Package, text: str) -> str:
                 continue  # leave the author's centre footer alone
         for tag in ("evenFooter", "firstFooter"):
             alt = hf.find(f"{{{SS_NS}}}{tag}")
-            if alt is not None and (XL_MARK in (alt.text or "") or "prepared for" in (alt.text or "").lower()):
+            alt_text = alt.text or "" if alt is not None else ""
+            if alt is not None and (FOOTER_MARK in alt_text or LEGACY_XL_MARK in alt_text
+                                    or "prepared for" in alt_text.lower()):
                 alt.text = ours
         pkg.set(part, to_xml(ws))
         count += 1

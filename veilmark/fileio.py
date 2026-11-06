@@ -57,6 +57,25 @@ def read_bytes(path) -> bytes:
         f"close it and try again.{_cloud_hint(path)}") from last
 
 
+def _verify_on_disk(path: Path, data: bytes) -> None:
+    """Read the saved file back: catches sync clients / antivirus changing or truncating it."""
+    import hashlib
+
+    try:
+        with open(path, "rb") as fh:
+            ok = hashlib.sha256(fh.read()).digest() == hashlib.sha256(data).digest()
+    except OSError:
+        ok = True  # can't re-open right now (e.g. OneDrive picked it up): the write itself succeeded
+    if not ok:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        raise FileAccessError(f"“{path.name}” wasn't saved correctly (the file on disk differs from what VeilMark "
+                              "wrote, possibly changed by a sync or security program). Nothing was kept — "
+                              "please try again or choose a different save folder.")
+
+
 def write_bytes(path, data: bytes) -> None:
     """Write atomically (temp file + rename) so a failed save never leaves half a file behind."""
     path = Path(path)
@@ -66,8 +85,13 @@ def write_bytes(path, data: bytes) -> None:
         try:
             with open(tmp, "wb") as fh:
                 fh.write(data)
+                fh.flush()
+                os.fsync(fh.fileno())
             os.replace(tmp, path)
+            _verify_on_disk(path, data)
             return
+        except FileAccessError:
+            raise
         except PermissionError as exc:
             last = exc
             try:

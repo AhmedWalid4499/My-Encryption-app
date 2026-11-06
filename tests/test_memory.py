@@ -7,7 +7,7 @@ import pytest
 from samples import make_docx, make_pptx
 from veilmark.registry import Ledger
 from veilmark.service import embed_watermark, trace_file
-from veilmark.settings import Settings, _new_key, keyring_load
+from veilmark.settings import Settings, _new_key
 
 
 @pytest.fixture()
@@ -18,6 +18,7 @@ def home(tmp_path, monkeypatch):
 
 def test_damaged_settings_never_replace_the_key(home):
     s = Settings.load()
+    s.team_key = _new_key()  # a legacy key from VeilMark 1.0-1.3
     s.owner_name = "Ahmed"
     s.save()
     key = s.team_key
@@ -28,26 +29,36 @@ def test_damaged_settings_never_replace_the_key(home):
 
 
 def test_settings_and_backup_lost_but_keyring_keeps_key(home):
-    key = Settings.load().team_key
+    s = Settings.load()
+    s.team_key = _new_key()
+    s.save()
+    key = s.team_key
     Settings.path().unlink()
     Settings.backup_path().unlink()
     assert Settings.load().team_key == key
 
 
-def test_changing_key_keeps_old_watermarks_readable(home):
+def test_new_watermarks_use_built_in_key_and_old_keys_still_read(home, monkeypatch):
+    import veilmark.appkey as appkey
+
     s = Settings.load()
+    legacy = _new_key()
     src = home / "deck.pptx"
     make_pptx(src)
-    old_copy = embed_watermark(src, message="Made with the first key", settings=s, ledger=Ledger()).output
-    s.set_team_key(_new_key(), "generated")
-    assert len(keyring_load()) == 2
+    # simulate a file made by VeilMark 1.3 with this PC's old team key
+    monkeypatch.setattr(appkey, "APP_KEY", legacy)
+    old_copy = embed_watermark(src, message="Made with the old team key", settings=s, ledger=Ledger()).output
+    monkeypatch.undo()
+    s.team_key = legacy  # what 1.3's settings.json holds
+    s.save()
     rep = trace_file(old_copy, settings=Settings.load())
-    assert rep.verdict == "authentic" and rep.message == "Made with the first key"
-    # re-watermarking that old copy continues its history under the new key
+    assert rep.verdict == "authentic" and rep.message == "Made with the old team key"
+    # re-watermarking it continues its history, now sealed with the built-in key
     s = Settings.load()
     newer = embed_watermark(old_copy, message="Second", settings=s, ledger=Ledger()).output
-    rep = trace_file(newer, settings=s)
-    assert [c.message for c in rep.chain] == ["Made with the first key", "Second"]
+    monkeypatch.setenv("VEILMARK_HOME", str(home / "fresh-pc"))  # no old key there
+    rep = trace_file(newer, settings=Settings.load(), ledger=Ledger())
+    assert [c.message for c in rep.chain] == ["Made with the old team key", "Second"]
 
 
 def test_settings_from_older_version_load(home):
@@ -75,5 +86,5 @@ def test_settings_files_are_written_atomically(home):
     s = Settings.load()
     s.save()
     names = sorted(p.name for p in Settings.path().parent.iterdir())
-    assert names == ["keyring.json", "settings.backup.json", "settings.json"]
+    assert names == ["settings.backup.json", "settings.json"]  # no key to store any more
     assert not [n for n in os.listdir(Settings.path().parent) if n.endswith(".tmp")]

@@ -18,7 +18,7 @@ from .. import __version__
 from ..crypto import decrypt_file, encrypt_file, is_encrypted_file
 from ..registry import Ledger
 from ..service import TraceReport, protect_file, trace_file, trace_pasted_text
-from ..settings import Settings, format_key, parse_key
+from ..settings import Settings
 from ..watermark.engine import SUPPORTED_PROTECT
 from . import icons, style
 from .widgets import Banner, Card, DropZone, FileList, label, open_path, reveal_in_explorer, run_in_background
@@ -781,6 +781,10 @@ class _CryptoPage(Page):
         self.add(row)
         self.banner = Banner()
         self.add(self.banner)
+        self.results = QWidget()
+        self.results_lay = QVBoxLayout(self.results)
+        self.results_lay.setContentsMargins(0, 0, 0, 0)
+        self.add(self.results)
         self.finish()
         self._update()
 
@@ -859,17 +863,51 @@ class _CryptoPage(Page):
         self.status.setText("")
         ok = [r for r in results if r[1]]
         bad = [r for r in results if not r[1]]
-        lines = [f"✔ {r[1].name}" for r in ok] + [f"✖ {r[0].name}: {r[2]}" for r in bad]
         verb = "encrypted" if self.ENCRYPT else "decrypted"
-        kind = "good" if not bad else ("warn" if ok else "bad")
-        title = f"{len(ok)} file{'s' if len(ok) != 1 else ''} {verb}" if ok else f"Nothing was {verb}"
-        self.banner.show_message(kind, title, "\n".join(lines[:15]))
+        if ok and not bad:
+            self.banner.show_message("good", f"{len(ok)} file{'s' if len(ok) != 1 else ''} {verb} and verified",
+                                     "Each file was checked after saving." +
+                                     (" Keep the password safe — it can't be recovered." if self.ENCRYPT else ""))
+        elif ok:
+            self.banner.show_message("warn", f"{len(ok)} {verb}, {len(bad)} failed", "See the details below.")
+        else:
+            self.banner.show_message("bad", f"Nothing was {verb}", "See the details below.")
+        while self.results_lay.count():
+            w = self.results_lay.takeAt(0).widget()
+            if w:
+                w.deleteLater()
+        for src, out, err in results:
+            card = QFrame()
+            card.setObjectName("Card")
+            row = QHBoxLayout(card)
+            row.setContentsMargins(16, 12, 16, 12)
+            mark = QLabel()
+            mark.setPixmap(icons.pixmap("check" if out else "alert", style.GOOD if out else style.BAD, 26, 2.0))
+            row.addWidget(mark)
+            if out:
+                lab = QLabel(f"<b>{html.escape(out.name)}</b><br><span style='color:{style.MUTED}'>"
+                             f"from {html.escape(src.name)}</span>")
+                lab.setWordWrap(True)
+                row.addWidget(lab, 1)
+                b1 = QPushButton("Show in folder")
+                b1.clicked.connect(lambda _=False, p=out: reveal_in_explorer(p))
+                row.addWidget(b1)
+                if not self.ENCRYPT:
+                    b2 = QPushButton("Open")
+                    b2.clicked.connect(lambda _=False, p=out: open_path(p))
+                    row.addWidget(b2)
+            else:
+                lab = QLabel(f"<b>{html.escape(src.name)}</b><br><span style='color:{style.BAD}'>"
+                             f"{html.escape(err)}</span>")
+                lab.setWordWrap(True)
+                row.addWidget(lab, 1)
+            self.results_lay.addWidget(card)
         if ok:
             self.files.clear()
             self.pw1.clear()
             self.pw2.clear()
-            reveal_in_explorer(ok[0][1])
         self._update()
+        self.scroll_to(self.banner)
 
 
 class EncryptPage(_CryptoPage):
@@ -944,7 +982,7 @@ class SettingsPage(Page):
     changed = Signal()
 
     def __init__(self, settings: Settings, updates=None):
-        super().__init__("Settings", "Your details and your team's watermark key.")
+        super().__init__("Settings", "Your details and app updates.")
         self.settings = settings
 
         me = Card("About you", subtitle="Recorded as the owner of every watermark you embed.")
@@ -965,33 +1003,6 @@ class SettingsPage(Page):
         self.saved = label("", "Hint")
         me.add(self.saved)
         self.add(me)
-
-        key = Card("Team watermark key",
-                   subtitle="Watermarks are sealed with this key. Give the same key to colleagues so their "
-                            "VeilMark can read and trace your documents (and vice versa). Keep it private.")
-        self.key_label = QLabel()
-        self.key_label.setObjectName("KeyLabel")
-        self.key_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        key.add(self.key_label)
-        row = QHBoxLayout()
-        self.reveal = QPushButton("Show key")
-        self.reveal.setCheckable(True)
-        self.reveal.toggled.connect(self._show_key)
-        copy = QPushButton("Copy")
-        copy.clicked.connect(lambda: (QGuiApplication.clipboard().setText(format_key(self.settings.team_key)),
-                                      self.saved.setText("Team key copied to the clipboard.")))
-        imp = QPushButton("Use a colleague's key…")
-        imp.clicked.connect(self._import)
-        new = QPushButton("Generate new key")
-        new.setObjectName("Danger")
-        new.clicked.connect(self._regen)
-        for b in (self.reveal, copy, imp):
-            row.addWidget(b)
-        row.addStretch()
-        row.addWidget(new)
-        key.add(row)
-        self.add(key)
-        self._show_key(False)
 
         if updates is not None:
             from ..updater import RELEASES_PAGE
@@ -1035,11 +1046,6 @@ class SettingsPage(Page):
         self.update_btn.setText({"ready": "Install update && restart", "available": "Open download page",
                                  "error": "Try again"}.get(state, "Check for updates now"))
 
-    def _show_key(self, on):
-        k = format_key(self.settings.team_key)
-        self.key_label.setText(k if on else "•" * 6 + "-" + "•" * 6 + "-  … hidden …")
-        self.reveal.setText("Hide key" if on else "Show key")
-
     def _save(self):
         self.settings.owner_name = self.name.text().strip()
         self.settings.organization = self.org.text().strip()
@@ -1047,34 +1053,6 @@ class SettingsPage(Page):
         self.saved.setText("Saved ✔")
         self.changed.emit()
 
-    def _import(self):
-        from PySide6.QtWidgets import QInputDialog
-
-        text, ok = QInputDialog.getText(self, "Use a colleague's key",
-                                        "Paste the team key you were given.\n\nYour current key is kept, so files "
-                                        "you watermarked before can still be extracted on this computer.")
-        if not ok or not text.strip():
-            return
-        try:
-            new_key = parse_key(text)
-        except Exception:  # noqa: BLE001
-            QMessageBox.warning(self, "Invalid key", "That doesn't look like a VeilMark team key.")
-            return
-        self.settings.set_team_key(new_key, "colleague's key")
-        self._show_key(self.reveal.isChecked())
-        self.saved.setText("Team key updated ✔")
-
-    def _regen(self):
-        from ..settings import _new_key
-
-        if QMessageBox.question(self, "Generate a new key?",
-                                "New watermarks will use the new key. Your current key is kept on this computer, "
-                                "so older files still extract here — but colleagues will need the new key.\n\n"
-                                "Generate a new key?") != QMessageBox.Yes:
-            return
-        self.settings.set_team_key(_new_key(), "generated")
-        self._show_key(self.reveal.isChecked())
-        self.saved.setText("New team key generated ✔")
 
 
 __all__: List[str] = ["HomePage", "EmbedPage", "ExtractPage", "EncryptPage", "DecryptPage", "HistoryPage",

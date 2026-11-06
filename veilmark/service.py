@@ -11,6 +11,7 @@ from .fileio import read_bytes, write_bytes
 from .registry import Issue, Ledger
 from .settings import Settings
 from .watermark import EmbedOptions, EmbedReport, Record, TraceResult, protect_bytes, read_existing_record, trace_bytes, trace_text
+from .watermark.engine import verify_protected
 from .watermark.footer import render as render_footer
 from .watermark.payload import now_iso
 
@@ -108,6 +109,7 @@ def protect_file(src, recipient: str = "", note: str = "", *, message: str = "",
         opts.footer_text = message or render_footer(settings.footer_template, recipient, record.owner,
                                                     record.organization)
     out_bytes, report = protect_bytes(data, src.name, record, key, opts)
+    verify_protected(out_bytes, src.name, key, record.doc_id, hop.hop_id)  # never save a broken copy
 
     out_dir = Path(output_dir or settings.output_folder or src.parent)
     out_dir.mkdir(parents=True, exist_ok=True)

@@ -44,10 +44,9 @@ def test_old_encrypted_files_still_decrypt(version):
     assert data == b"secret made by " + version[1:].replace("_", ".").encode() and meta["name"] == "secret.txt"
 
 
-def test_old_key_still_works_after_switching_team_key(settings):
-    from veilmark.settings import _new_key
-
-    settings.save()                           # puts the fixture key on this PC's keyring
-    settings.set_team_key(_new_key(), "new")  # e.g. user clicked "Generate new key"
-    rep = trace_file(FIXTURES / "v1_2_1.pptx", settings=settings, ledger=Ledger())
+def test_old_key_kept_only_in_keyring_still_works(settings):
+    settings.save()                          # 1.3 stored the key in settings.json and keyring.json
+    settings.team_key = ""                   # e.g. settings reset - the keyring still has it
+    settings.save()
+    rep = trace_file(FIXTURES / "v1_2_1.pptx", settings=Settings.load(), ledger=Ledger())
     assert rep.verdict == "authentic" and rep.message == "Watermark from 1.2.1"

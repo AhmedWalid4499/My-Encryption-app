@@ -157,15 +157,32 @@ def test_slide_copied_into_new_deck(env):
     assert rep.verdict == "authentic" and rep.likely_source.recipient == "Grace"
 
 
-def test_wrong_team_key_reports_foreign(env, monkeypatch):
+def test_watermark_from_unknown_key_reports_foreign(env, monkeypatch):
+    """A watermark made with a key this computer doesn't know (e.g. another organisation's build)."""
+    import veilmark.appkey as appkey
+    from veilmark.settings import _new_key
+
     s, ledger, tmp = env
     src = tmp / "x.docx"
     make_docx(src)
+    real = appkey.APP_KEY
+    monkeypatch.setattr(appkey, "APP_KEY", _new_key())  # someone else's build
     out = protect_file(src, "Heidi", settings=s, ledger=ledger).output
-    monkeypatch.setenv("VEILMARK_HOME", str(tmp / "other-pc"))  # another team's computer
-    other = Settings.load()
-    rep = trace_file(out, settings=other, ledger=Ledger())
+    monkeypatch.setattr(appkey, "APP_KEY", real)
+    monkeypatch.setenv("VEILMARK_HOME", str(tmp / "other-pc"))
+    rep = trace_file(out, settings=Settings.load(), ledger=Ledger())
     assert rep.verdict == "foreign" and not rep.chain
+
+
+def test_any_veilmark_copy_reads_watermarks_without_settings(env, monkeypatch):
+    """The key is built in: a brand-new install on another PC reads the watermark text."""
+    s, ledger, tmp = env
+    src = tmp / "x.pptx"
+    make_pptx(src)
+    out = protect_file(src, message="Shared text", settings=s, ledger=ledger).output
+    monkeypatch.setenv("VEILMARK_HOME", str(tmp / "fresh-pc"))
+    rep = trace_file(out, settings=Settings.load(), ledger=Ledger())
+    assert rep.verdict == "authentic" and rep.message == "Shared text"
 
 
 def test_clean_file_reports_none(env):

@@ -225,7 +225,8 @@ def _write_invisible_text(pkg: Package, mark: str, excel_cells: bool) -> str:
         if data is None:
             continue
         root = parse_xml(data)
-        nodes = list(root.iter(tag))
+        # never touch field text (slide numbers, dates): PowerPoint regenerates it
+        nodes = [n for n in root.iter(tag) if n.getparent() is None or n.getparent().tag != f"{{{A_NS}}}fld"]
         if pkg.kind == "xlsx":
             # only longer free-text strings, never things that look like keys/numbers
             nodes = [n for n in nodes if n.text and len(n.text.strip()) >= 12 and " " in n.text.strip()]
@@ -477,6 +478,8 @@ def _decode_text_file(data: bytes) -> str:
 
 def trace_bytes(data: bytes, filename: str, key: Optional[bytes]) -> TraceResult:
     ext = Path(filename).suffix.lower()
+    if is_protected_office(data, filename):
+        return TraceResult(error=PROTECTED_MSG)
     if ext in LEGACY_EXTS:
         return TraceResult(error="Old binary Office format. Open it in Office and 'Save As' .docx/.pptx/.xlsx first.")
     if data[:2] == b"PK":
@@ -505,6 +508,8 @@ def read_existing_record(data: bytes, filename: str, key: bytes) -> Optional[Rec
 def protect_bytes(data: bytes, filename: str, record: Record, key: bytes,
                   options: EmbedOptions = None) -> tuple[bytes, EmbedReport]:
     ext = Path(filename).suffix.lower()
+    if is_protected_office(data, filename):
+        raise ValueError(PROTECTED_MSG)
     if ext in OFFICE_EXTS:
         return embed_office(data, record, key, options)
     if ext in IMAGE_EXTS:
@@ -518,4 +523,48 @@ def protect_bytes(data: bytes, filename: str, record: Record, key: bytes,
 
 
 SUPPORTED_PROTECT = sorted(OFFICE_EXTS | IMAGE_EXTS | TEXT_EXTS)
+
+OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+PROTECTED_MSG = ("This Office file is protected (a password or a sensitivity label such as “Confidential” that "
+                 "encrypts the file). VeilMark can't look inside it. Open it in Office, save a copy without the "
+                 "encryption (File → Info → Protect / Sensitivity), and use that copy.")
+
+
+def is_protected_office(data: bytes, filename: str) -> bool:
+    """Password-protected or Microsoft Purview (sensitivity label) encrypted .docx/.pptx/.xlsx."""
+    return (Path(filename).suffix.lower() in OFFICE_EXTS and data[:8] == OLE_MAGIC
+            and "EncryptedPackage".encode("utf-16-le") in data[:200_000])
+
+
+class EmbedCheckError(ValueError):
+    pass
+
+
+def verify_protected(out: bytes, filename: str, key: bytes, doc_id: str, hop_id: str) -> None:
+    """Re-open the watermarked result before it is saved. Raises EmbedCheckError if anything is off."""
+    ext = Path(filename).suffix.lower()
+    fail = ("VeilMark stopped before saving because the watermarked copy didn't pass its safety check "
+            "({}). Your original file is untouched.")
+    if ext in OFFICE_EXTS:
+        import zipfile
+
+        try:
+            with zipfile.ZipFile(io.BytesIO(out)) as z:
+                if z.testzip() is not None:
+                    raise EmbedCheckError(fail.format("damaged archive"))
+                for name in z.namelist():
+                    if name.lower().endswith((".xml", ".rels")):
+                        parse_xml(z.read(name))
+            Package(out)
+        except EmbedCheckError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - any parse problem means "don't save"
+            raise EmbedCheckError(fail.format(f"invalid document structure: {exc}")) from exc
+    result = trace_bytes(out, filename, key)
+    hops = {t.hop_id for t in result.tokens if t.authentic}
+    for rec in result.records:
+        if rec.doc_id == doc_id:
+            hops |= {h.hop_id for h in rec.chain}
+    if hop_id not in hops:
+        raise EmbedCheckError(fail.format("the watermark could not be read back"))
 ProgressFn = Optional[Callable[[str, float], None]]

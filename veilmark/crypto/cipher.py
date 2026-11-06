@@ -212,9 +212,16 @@ def encrypt_file(src, password: str, dest_dir=None, *, aes_armour: bool = True,
                  progress: Progress = None) -> Path:
     src = Path(src)
     plain = read_bytes(src)
-    meta = {"name": src.name, "size": len(plain), "encrypted": int(time.time())}
+    meta = {"name": src.name, "size": len(plain), "encrypted": int(time.time()),
+            "sha256": hashlib.sha256(plain).hexdigest()}
     blob = encrypt_bytes(plain, password, aes_armour=aes_armour,
                          metadata=meta, progress=progress)
+    # prove the file can be decrypted again before anything is saved
+    if progress:
+        progress("Verifying the encrypted file…", 0.97)
+    check, _ = decrypt_bytes(blob, password)
+    if check != plain:
+        raise DecryptionError("Encryption self-check failed, so nothing was saved. Please try again.")
     out = _unique(Path(dest_dir or src.parent) / (src.name + EXTENSION))
     write_bytes(out, blob)
     return out
@@ -223,6 +230,11 @@ def encrypt_file(src, password: str, dest_dir=None, *, aes_armour: bool = True,
 def decrypt_file(src, password: str, dest_dir=None, progress: Progress = None) -> Path:
     src = Path(src)
     data, meta = decrypt_bytes(read_bytes(src), password, progress)
+    expected = meta.get("sha256")
+    if expected and hashlib.sha256(data).hexdigest() != expected:
+        raise DecryptionError("The decrypted file doesn't match the original, so it was not saved.")
+    if meta.get("size") is not None and len(data) != meta["size"]:
+        raise DecryptionError("The decrypted file has the wrong size, so it was not saved.")
     name = Path(meta.get("name") or src.stem).name  # never trust a path from the file
     if src.suffix.lower() == EXTENSION and not meta.get("name"):
         name = src.stem

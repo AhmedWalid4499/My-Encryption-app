@@ -91,7 +91,7 @@ def derive_key(team_key: str) -> bytes:
 class Settings:
     owner_name: str = ""
     organization: str = ""
-    team_key: str = field(default_factory=_new_key)
+    team_key: str = ""               # legacy (VeilMark 1.0-1.3): only used to read older watermarks
     output_folder: str = ""          # empty = next to the original file
     filename_pattern: str = "{stem} - for {recipient}{ext}"
     aes_armour: bool = True
@@ -107,12 +107,20 @@ class Settings:
 
     @property
     def key_bytes(self) -> bytes:
-        return derive_key(self.team_key)
+        """Key used for NEW watermarks: the one built into the app."""
+        from .appkey import APP_KEY
+
+        return derive_key(APP_KEY)
 
     @property
     def all_key_bytes(self) -> list:
-        """Current key first, then every older key from the keyring (so old watermarks still extract)."""
-        keys = [self.team_key] + [k["key"] for k in reversed(keyring_load()) if k["key"] != self.team_key]
+        """Built-in key first, then any older per-computer keys (so watermarks from 1.0-1.3 still extract)."""
+        from .appkey import APP_KEY
+
+        keys = [APP_KEY]
+        for k in [self.team_key] + [k["key"] for k in reversed(keyring_load())]:
+            if k and k not in keys:
+                keys.append(k)
         out = []
         for k in keys:
             try:
@@ -122,8 +130,9 @@ class Settings:
         return out
 
     def set_team_key(self, new_key: str, label: str = "") -> None:
-        """Switch team key; the old one stays in the keyring so its watermarks remain readable."""
-        keyring_add(self.team_key, "previous key")
+        """Legacy helper: remember another key for reading older watermarks."""
+        if self.team_key:
+            keyring_add(self.team_key, "previous key")
         self.team_key = new_key
         keyring_add(new_key, label)
         self.save()
@@ -151,8 +160,8 @@ class Settings:
         else:
             raise last
         data = json.loads(text)
-        if not isinstance(data, dict) or not data.get("team_key"):
-            raise ValueError("settings file has no team key")
+        if not isinstance(data, dict):
+            raise ValueError("settings file is not valid")
         s = cls()
         for k, v in data.items():
             if hasattr(s, k):
@@ -185,9 +194,10 @@ class Settings:
         if s is None:
             s = cls()
             ring = keyring_load()
-            if ring:  # settings lost but keys known: keep using the most recent one
+            if ring:  # settings lost: keep the most recent legacy key for reading old watermarks
                 s.team_key = ring[-1]["key"]
-        keyring_add(s.team_key, "team key")
+        if s.team_key:
+            keyring_add(s.team_key, "team key")
         try:
             s.save()
         except OSError:
@@ -201,4 +211,5 @@ class Settings:
             _atomic_write(self.backup_path(), text)
         except OSError:
             pass
-        keyring_add(self.team_key, "team key")
+        if self.team_key:
+            keyring_add(self.team_key, "team key")

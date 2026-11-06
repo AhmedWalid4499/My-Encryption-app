@@ -23,37 +23,30 @@ It is a re-engineering of the thesis Mathematica code (`InsertSecretMessage`, `E
 
 ## Getting the Windows app
 
-**Download:** https://github.com/AhmedWalid4499/My-Encryption-app/releases/latest
+**Download the latest installer:**
+https://raw.githubusercontent.com/AhmedWalid4499/My-Encryption-app/HEAD/releases/VeilMark-Setup.exe
 
-Direct installer link (always the newest version):
-https://github.com/AhmedWalid4499/My-Encryption-app/releases/latest/download/VeilMark-Setup.exe
-
-* `VeilMark-Setup.exe`: a normal Windows installer (no admin rights needed).
-* `VeilMark-Portable.zip`: unzip it and run `VeilMark.exe`.
-* `SHA256SUMS.txt`: checksums of both files.
+It lives in this repository's [`releases/`](releases/) folder, next to `latest.json` (version, size, SHA-256).
+It's a normal Windows installer and needs no admin rights.
 
 Windows SmartScreen may say *"Windows protected your PC"* because the app isn't code-signed yet. Click
 **More info**, then **Run anyway**.
 
 ### Automatic updates
-VeilMark checks GitHub for a newer release when it starts (and every 6 hours while open). If there is one, it
-**downloads it in the background**, verifies its SHA-256 checksum, and shows **"✨ Update ready – Click to install"**
-in the sidebar. One click closes the app, installs the new version and reopens it. Settings, team key and sharing
-history are kept. You can turn this off, or check manually, under **Settings → Updates**.
+VeilMark reads `releases/latest.json` when it starts (and every 6 hours while open). If there's a newer version, it
+**downloads the installer in the background**, checks its SHA-256 checksum, and shows **"✨ Update ready – Click to
+install"** in the sidebar. One click closes the app, installs the update and reopens it. Settings and history are
+kept. You can turn this off, or check manually, under **Settings → Updates**.
 
-**Publishing a new version (for the maintainer):** bump `__version__` in `veilmark/__init__.py` (and the version in
-`packaging/installer.iss` / `packaging/version_info.txt`; a test checks they match), commit, then push a tag:
+**Publishing a new version (for the maintainer):** raise the version in `veilmark/__init__.py`,
+`packaging/installer.iss` and `packaging/version_info.txt` (a test checks they match), then push to the default
+branch. GitHub Actions then:
+1. runs all tests on Linux and Windows,
+2. builds the app, embeds and extracts a watermark with the built program, and test-installs the installer,
+3. only if all of that passes, commits the new `VeilMark-Setup.exe` and `latest.json` into `releases/`.
 
-```bash
-git tag v1.2.0
-```
-
-```bash
-git push origin v1.2.0
-```
-
-GitHub Actions tests the code on Linux and Windows, builds the installer and publishes the release. Every installed
-copy picks it up automatically.
+Every installed copy picks it up automatically. Nothing is published if any check fails, or if the version number
+didn't go up.
 
 **Build it yourself on Windows:** install Python 3.11+ from python.org, then double-click `build_windows.bat`
 (it installs dependencies, runs the tests and builds `dist\VeilMark\VeilMark.exe`; if Inno Setup 6 is
@@ -104,20 +97,25 @@ Drop any file onto **Extract watermark**, or paste text copied from an email, we
 You can save the result as an HTML report.
 
 ### Updates never make VeilMark forget
-* Your settings, team key and History live in `%APPDATA%\VeilMark`. The installer never touches that folder, so
-  updates keep everything.
-* Every team key ever used on your PC is kept in `keyring.json`. If you generate a new key or switch to a
-  colleague's key, files watermarked with the old key **still extract** on your PC.
-* If the settings file is ever damaged or locked, VeilMark restores it from `settings.backup.json` or the keyring.
-  It never silently creates a new key (the damaged file is kept aside as `settings.damaged-….json`).
+* Your settings and History live in `%APPDATA%\VeilMark`. The installer never touches that folder, so updates keep
+  everything.
+* The watermark key is **built into the app**: there's no key to manage. Any copy of VeilMark can read a VeilMark
+  watermark, on any PC.
+* Files watermarked with VeilMark 1.0–1.3, which used a per-PC "team key", still extract. That old key stays stored
+  on your PC (`settings.json` / `keyring.json`) and is tried automatically.
+* If the settings file is ever damaged or locked, VeilMark restores it from `settings.backup.json`.
 * Your last watermark text is remembered and pre-filled on the Embed page.
 * `tests/fixtures` holds real files made by every released version (1.1.0, 1.2.1, …). Every build must still
   extract and decrypt them, so no update can break old watermarks.
 
-### Working as a team
-Watermarks are sealed with your **team key** (Settings → Team watermark key). Give colleagues the same key
-(**Copy**, then on their PC **Use a colleague's key…**) so everyone can trace each other's documents. A file
-protected with a different key is reported as *"watermark from another team key"*.
+### Safety checks on every file
+* **Embed:** the watermarked copy is re-opened and fully checked (archive, every XML part, the watermark reads back)
+  **before** it is saved. If anything is off, nothing is saved and the original is untouched.
+* **Encrypt:** the encrypted file is decrypted again in memory and compared before it is saved.
+* **Decrypt:** the result is compared with a fingerprint (SHA-256) of the original stored inside the `.vmk` file.
+* **Saving:** every saved file is read back from disk and compared, which catches sync or antivirus tools changing
+  it. Files open in Office, or briefly locked by OneDrive, get a clear message instead of an error code.
+* Password-protected or sensitivity-labelled (encrypted) Office files are recognised and explained.
 
 ### Encrypt
 Open **Encrypt**, drop any files, type a password twice and click **Encrypt**. You get `name.ext.vmk` next to each
@@ -165,8 +163,10 @@ Optional (off by default): *Also mark Excel cell text* puts invisible marks insi
 because it changes cell values and could affect formulas that compare text.
 
 The **tokens** are only 16 bytes (`doc_id | copy_id | HMAC`), so they fit anywhere. If only tokens survive, the
-local **History** ledger turns the copy ID back into the recipient's name. The HMAC proves the mark was made with
-your team key, so nobody can forge a watermark that points at someone else.
+local **History** ledger turns the copy ID back into the recipient's name. The HMAC shows the mark was made with
+VeilMark's key and hasn't been altered. Because that key is built into every copy of the app, anyone who has
+VeilMark can read **and create** VeilMark watermarks, so a watermark shows what was embedded but doesn't prove *who*
+embedded it.
 
 ### Limits worth knowing
 No watermark survives everything. **Printing, screenshots/photos of the screen, and retyping** the content destroy
@@ -217,13 +217,15 @@ veilmark/
   watermark/ooxml.py   Office Open XML package editing (lxml, keeps Office happy)
   watermark/engine.py  the five layers: embed + trace
   watermark/footer.py  optional visible "Confidential – prepared for …" footer
-  updater.py           GitHub Releases update check, verified download, silent install
+  updater.py           reads releases/latest.json, verified download, silent install
+  appkey.py            the watermark key built into the app
+  fileio.py            safe reads/writes (lock retries, atomic save, read-back check)
   registry.py          SQLite sharing history (%APPDATA%\VeilMark\ledger.db)
-  settings.py          name, organisation, team key (%APPDATA%\VeilMark\settings.json)
+  settings.py          name, organisation, preferences (%APPDATA%\VeilMark\settings.json)
   service.py           protect_file / trace_file used by GUI and CLI
   gui/                 PySide6 (Qt) desktop interface
   cli.py               command line
-tests/                 93 tests incl. LibreOffice re-save, Inspect-Document, slide-copy, multi-hop, cross-PC vectors
+tests/                 104 tests incl. LibreOffice re-save, Inspect-Document, slide-copy, multi-hop, cross-PC vectors
 packaging/             PyInstaller spec, Inno Setup installer script, Windows version info
 ```
 
