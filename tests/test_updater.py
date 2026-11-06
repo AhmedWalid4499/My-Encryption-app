@@ -1,5 +1,7 @@
 import hashlib
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -22,7 +24,8 @@ def test_version_compare():
     assert not updater.is_newer("", "1.0.0")
 
 
-def test_reads_manifest_from_repo_releases_folder():
+def test_reads_manifest_from_repo_releases_folder(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "win32")
     seen = []
 
     def fetch(url, t):
@@ -87,6 +90,54 @@ def test_download_verifies_checksum(tmp_path, monkeypatch):
     with pytest.raises(updater.UpdateError, match="security check"):
         updater.download(bad, dest_dir=tmp_path)
     assert not list(tmp_path.glob("*9.9.8*"))
+
+
+def test_each_mac_gets_its_own_disk_image():
+    base = "https://raw.githubusercontent.com/AhmedWalid4499/My-Encryption-app/HEAD/releases/"
+    assert updater.manifest_url("darwin", "arm64") == base + "latest-macos-arm64.json"
+    assert updater.manifest_url("darwin", "x86_64") == base + "latest-macos-x86_64.json"
+    assert updater.manifest_url("win32", "AMD64") == base + "latest.json"
+    assert updater.default_installer("darwin", "arm64") == "VeilMark-macOS-AppleSilicon.dmg"
+    assert updater.default_installer("darwin", "x86_64") == "VeilMark-macOS-Intel.dmg"
+    assert updater.default_installer("win32") == "VeilMark-Setup.exe"
+
+
+def test_mac_update_points_at_disk_image(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(updater.platform, "machine", lambda: "arm64")
+    seen = []
+
+    def fetch(url, t):
+        seen.append(url)
+        return _manifest("99.0.0", installer="VeilMark-macOS-AppleSilicon.dmg")
+    info = updater.check(fetch=fetch)
+    assert seen[0].endswith("/releases/latest-macos-arm64.json")
+    assert info.url.endswith("/HEAD/releases/VeilMark-macOS-AppleSilicon.dmg") and info.page == info.url
+
+
+def test_mac_download_keeps_dmg_extension(tmp_path, monkeypatch):
+    payload = b"dmg-bytes" * 100
+    monkeypatch.setattr(updater, "_get", lambda *a, **k: _Resp(payload))
+    info = updater.UpdateInfo("9.9.9", "", "", "https://x/VeilMark-macOS-Intel.dmg", len(payload),
+                              hashlib.sha256(payload).hexdigest())
+    assert updater.download(info, dest_dir=tmp_path).name == "VeilMark-Setup-9.9.9.dmg"
+
+
+def test_source_checkout_never_self_installs():
+    assert not updater.can_self_install()
+    assert updater.mac_app_bundle() is None
+
+
+def test_mac_install_script_quotes_paths(tmp_path):
+    script = updater.mac_install_script(Path("/Users/sara/Library/Application Support/VeilMark/updates/u.dmg"),
+                                        Path("/Applications/VeilMark.app"), 4242)
+    assert "PID=4242" in script
+    assert "DMG='/Users/sara/Library/Application Support/VeilMark/updates/u.dmg'" in script
+    assert "APP=/Applications/VeilMark.app" in script and 'open "$APP"' in script
+    path = tmp_path / "install.sh"
+    path.write_text(script)
+    if sys.platform != "win32":
+        assert subprocess.run(["bash", "-n", str(path)]).returncode == 0  # valid shell syntax
 
 
 def test_packaging_versions_match_app():

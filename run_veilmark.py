@@ -3,6 +3,8 @@ import sys
 
 
 def _main() -> int:
+    # older macOS versions pass a "-psn_..." process serial number when the app is opened from Finder
+    sys.argv = [a for a in sys.argv if not a.startswith("-psn_")]
     if len(sys.argv) > 1:
         from veilmark.cli import main
         return main()

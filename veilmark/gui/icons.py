@@ -1,4 +1,4 @@
-"""Crisp line icons drawn from inline SVG (consistent on every Windows setup, unlike emoji)."""
+"""Crisp line icons drawn from inline SVG (consistent on every Windows and Mac setup, unlike emoji)."""
 
 from __future__ import annotations
 
