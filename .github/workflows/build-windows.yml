@@ -179,6 +179,10 @@ jobs:
           m=$(python -c "import platform; print(platform.machine())")
           echo "Python runs as $m"
           [ "$m" = "${{ matrix.arch }}" ] || { echo "expected ${{ matrix.arch }}"; exit 1; }
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then
+            # the universal2 Python would let pip pick Apple-silicon-only wheels: ask for Intel ones only
+            echo "_PYTHON_HOST_PLATFORM=macosx-10.13-x86_64" >> "$GITHUB_ENV"
+          fi
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
       - name: Run tests on the Mac (incl. cross-platform cipher vectors)
