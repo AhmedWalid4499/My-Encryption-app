@@ -23,11 +23,9 @@ It is a re-engineering of the thesis Mathematica code (`InsertSecretMessage`, `E
 
 ## Getting the Windows app
 
-**Download the latest installer:**
-https://raw.githubusercontent.com/AhmedWalid4499/My-Encryption-app/HEAD/releases/VeilMark-Setup.exe
-
-It lives in this repository's [`releases/`](releases/) folder, next to `latest.json` (version, size, SHA-256).
-It's a normal Windows installer and needs no admin rights.
+**Download:** open the [`releases/`](https://github.com/AhmedWalid4499/My-Encryption-app/tree/HEAD/releases) folder
+and download the newest `VeilMark-Setup-<version>.exe`. It's a normal Windows installer and needs no admin rights.
+Every version is kept there, and `latest.json` says which one is newest.
 
 Windows SmartScreen may say *"Windows protected your PC"* because the app isn't code-signed yet. Click
 **More info**, then **Run anyway**.
@@ -44,8 +42,8 @@ branch. GitHub Actions then:
 1. runs all tests on Linux, Windows and Mac (Apple silicon and Intel),
 2. builds the Windows app and the two Mac apps, embeds and extracts a watermark with each built program, and
    test-installs the Windows installer,
-3. only if all of that passes, commits the new `VeilMark-Setup.exe` + `latest.json` and the Mac disk images +
-   `latest-macos-*.json` into `releases/`.
+3. only if all of that passes, commits `VeilMark-Setup-<version>.exe` + an updated `latest.json` and the Mac disk
+   images `VeilMark-macOS-<AppleSilicon|Intel>-<version>.dmg` + updated `latest-macos-*.json` into `releases/`.
 
 Every run also keeps the built files as downloadable *artifacts* on the GitHub Actions run page, so a test build
 can be tried before it is published.
@@ -55,13 +53,12 @@ didn't go up.
 
 ## Getting the Mac app
 
-**Download the disk image for your Mac** (Apple menu  → *About This Mac*: "Chip: Apple M…" = Apple silicon,
+**Download:** open the [`releases/`](https://github.com/AhmedWalid4499/My-Encryption-app/tree/HEAD/releases) folder
+and download the newest disk image for your Mac (Apple menu  → *About This Mac*: "Chip: Apple M…" = Apple silicon,
 "Processor: Intel…" = Intel):
 
-* **Apple silicon (M1, M2, M3, M4 …):**
-  https://raw.githubusercontent.com/AhmedWalid4499/My-Encryption-app/HEAD/releases/VeilMark-macOS-AppleSilicon.dmg
-* **Intel Mac:**
-  https://raw.githubusercontent.com/AhmedWalid4499/My-Encryption-app/HEAD/releases/VeilMark-macOS-Intel.dmg
+* **Apple silicon (M1, M2, M3, M4 …):** `VeilMark-macOS-AppleSilicon-<version>.dmg`
+* **Intel Mac:** `VeilMark-macOS-Intel-<version>.dmg`
 
 Open the downloaded `.dmg` and drag **VeilMark** onto **Applications**. Needs macOS 14 Sonoma or newer.
 

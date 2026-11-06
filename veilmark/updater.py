@@ -1,11 +1,12 @@
 """Automatic updates from GitHub Releases.
 
 1. ``check()`` reads this platform's manifest from the GitHub repository's ``releases/`` folder
-   (the build workflow writes it whenever a new version passes all tests) and compares versions:
+   (the build workflow writes it whenever a new version passes all tests) and compares versions.
+   Every version keeps its own file there; the manifest names the newest one:
 
-   * Windows: ``latest.json``              -> ``VeilMark-Setup.exe`` (Inno Setup installer)
-   * Mac (Apple silicon): ``latest-macos-arm64.json``  -> ``VeilMark-macOS-AppleSilicon.dmg``
-   * Mac (Intel):         ``latest-macos-x86_64.json`` -> ``VeilMark-macOS-Intel.dmg``
+   * Windows: ``latest.json``              -> ``VeilMark-Setup-<version>.exe`` (Inno Setup installer)
+   * Mac (Apple silicon): ``latest-macos-arm64.json``  -> ``VeilMark-macOS-AppleSilicon-<version>.dmg``
+   * Mac (Intel):         ``latest-macos-x86_64.json`` -> ``VeilMark-macOS-Intel-<version>.dmg``
 2. ``download()`` fetches the installer in the background and verifies its SHA-256
    checksum from the manifest before it is ever run.
 3. ``launch_installer()`` installs it: on Windows the installer runs silently; on a Mac a small
@@ -37,9 +38,8 @@ GITHUB_REPO = "AhmedWalid4499/My-Encryption-app"
 RAW_BASE = f"https://raw.githubusercontent.com/{GITHUB_REPO}/HEAD/releases"
 MANIFEST_URL = f"{RAW_BASE}/latest.json"
 RELEASES_PAGE = f"https://github.com/{GITHUB_REPO}/tree/HEAD/releases"
-INSTALLER_NAME = "VeilMark-Setup.exe"
-DOWNLOAD_URL = f"{RAW_BASE}/{INSTALLER_NAME}"
-MAC_DOWNLOADS = {  # machine -> (manifest, disk image)
+INSTALLER_NAME = "VeilMark-Setup.exe"  # fallback only; latest.json names the versioned EXE
+MAC_DOWNLOADS = {  # machine -> (manifest, fallback disk image name; the manifest names the versioned .dmg)
     "arm64": ("latest-macos-arm64.json", "VeilMark-macOS-AppleSilicon.dmg"),
     "x86_64": ("latest-macos-x86_64.json", "VeilMark-macOS-Intel.dmg"),
 }

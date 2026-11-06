@@ -131,19 +131,20 @@ jobs:
           }
           if ([version]$v -le [version]$published) { "Version $v is already published ($published) - nothing to do."; exit 0 }
           New-Item -ItemType Directory -Force releases | Out-Null
-          Copy-Item dist/VeilMark-Setup.exe releases/VeilMark-Setup.exe -Force
+          $exe = "VeilMark-Setup-$v.exe"              # every version keeps its own EXE in releases/
+          Copy-Item dist/VeilMark-Setup.exe "releases/$exe" -Force
           $manifest = [ordered]@{
             version   = $v
-            installer = "VeilMark-Setup.exe"
-            sha256    = (Get-FileHash releases/VeilMark-Setup.exe -Algorithm SHA256).Hash.ToLower()
-            size      = (Get-Item releases/VeilMark-Setup.exe).Length
+            installer = $exe
+            sha256    = (Get-FileHash "releases/$exe" -Algorithm SHA256).Hash.ToLower()
+            size      = (Get-Item "releases/$exe").Length
             published = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
             commit    = "${{ github.sha }}"
           }
           $manifest | ConvertTo-Json | Set-Content -Encoding utf8NoBOM releases/latest.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add releases/latest.json releases/VeilMark-Setup.exe
+          git add releases/latest.json "releases/$exe"
           git commit -m "Release VeilMark $v [skip ci]"
           git push origin "HEAD:${{ github.ref_name }}"
           if ($LASTEXITCODE -ne 0) { Write-Error "push failed (the branch moved?) - push again to retry"; exit 1 }
@@ -270,13 +271,14 @@ jobs:
               published = json.loads(manifest.read_text())["version"] if manifest.exists() else "0.0.0"
               if ver(v) <= ver(published):
                   print(f"{label}: version {v} is already published ({published})."); continue
-              shutil.copyfile(dmg, f"releases/{dmg.name}")
-              data = Path(f"releases/{dmg.name}").read_bytes()
+              name = f"VeilMark-macOS-{label}-{v}.dmg"   # every version keeps its own disk image in releases/
+              shutil.copyfile(dmg, f"releases/{name}")
+              data = Path(f"releases/{name}").read_bytes()
               manifest.write_text(json.dumps({
-                  "version": v, "installer": dmg.name, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data),
+                  "version": v, "installer": name, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data),
                   "published": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                   "commit": os.environ["GITHUB_SHA"]}, indent=2) + "\n")
-              changed += [f"releases/{dmg.name}", str(manifest)]
+              changed += [f"releases/{name}", str(manifest)]
           Path("changed.txt").write_text("\n".join(changed))
           PY
           if [ ! -s changed.txt ]; then echo "Nothing new to publish."; exit 0; fi
