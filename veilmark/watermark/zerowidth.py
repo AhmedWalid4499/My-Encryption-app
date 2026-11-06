@@ -12,10 +12,19 @@ import zlib
 from typing import List
 
 ALPHABET = ("\u200b", "\u200c", "\u200d", "\u2060")  # ZWSP, ZWNJ, ZWJ, WORD JOINER
-START = "\u2063\u2062"  # invisible separator + invisible times
-END = "\u2062\u2063"
+# Frame: ZERO WIDTH NO-BREAK SPACE + WORD JOINER. Both are drawn as nothing by Word, Pages, PowerPoint, Excel and
+# browsers on Windows and Mac, and U+FEFF never occurs inside the body, so the frame is unambiguous.
+START = "\ufeff\u2060"
+END = "\u2060\ufeff"
+# VeilMark up to 1.5.1 framed marks with the math characters INVISIBLE SEPARATOR / INVISIBLE TIMES. Word for Mac
+# draws those with Cambria Math as a visible comma and a boxed X ("‚⊠…⊠‚"), so they are no longer written - but they
+# are still read (old files keep extracting) and removed when a file is re-watermarked.
+LEGACY_START = "\u2063\u2062"
+LEGACY_END = "\u2062\u2063"
 _DECODE = {c: i for i, c in enumerate(ALPHABET)}
-_PATTERN = re.compile(re.escape(START) + "([" + "".join(ALPHABET) + "]+)" + re.escape(END))
+_BODY = "([" + "".join(ALPHABET) + "]+)"
+_PATTERN = re.compile(
+    re.escape(START) + _BODY + re.escape(END) + "|" + re.escape(LEGACY_START) + _BODY + re.escape(LEGACY_END))
 
 
 def encode(data: bytes) -> str:
@@ -47,7 +56,7 @@ def find_all(text: str) -> List[bytes]:
     """Return every intact payload hidden in ``text``."""
     found = []
     for match in _PATTERN.finditer(text):
-        data = _decode_body(match.group(1))
+        data = _decode_body(match.group(1) or match.group(2))
         if data is not None:
             found.append(data)
     return found
