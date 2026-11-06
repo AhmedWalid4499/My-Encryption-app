@@ -4,3 +4,5 @@ numpy>=1.26,<3
 Pillow>=10.0
 cryptography>=42.0
 lxml>=5.0
+truststore>=0.9     # HTTPS via the computer's own certificates (the Mac app needs this for updates)
+certifi>=2024.2

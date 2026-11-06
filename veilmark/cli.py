@@ -4,6 +4,7 @@
     veilmark extract "found online.pptx"
     veilmark encrypt secret.xlsx            (asks for a password)
     veilmark decrypt secret.xlsx.vmk
+    veilmark check-update                   (is a newer version published?)
 """
 
 from __future__ import annotations
@@ -50,7 +51,19 @@ def main(argv=None) -> int:
     d.add_argument("files", nargs="+")
     d.add_argument("--out", default=None)
 
+    sub.add_parser("check-update", help="check GitHub for a newer version")
+
     args = ap.parse_args(argv)
+    if args.cmd == "check-update":
+        from . import updater
+        try:
+            info = updater.check()
+        except updater.UpdateError as exc:
+            print(exc)
+            return 1
+        print(f"Version {info.version} is available: {info.url}" if info else
+              f"VeilMark {__version__} is up to date.")
+        return 0
     settings = Settings.load()
     ledger = Ledger()
     rc = 0

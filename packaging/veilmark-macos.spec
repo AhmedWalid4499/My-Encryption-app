@@ -21,7 +21,7 @@ a = Analysis(
     [str(ROOT / "run_veilmark.py")],
     pathex=[str(ROOT)],
     datas=[(str(ROOT / "assets" / "veilmark.png"), "assets"), (str(ROOT / "assets" / "check.svg"), "assets")],
-    hiddenimports=["veilmark.gui.main", "veilmark.cli", "PySide6.QtSvg"],
+    hiddenimports=["veilmark.gui.main", "veilmark.cli", "PySide6.QtSvg", "truststore", "certifi"],
     excludes=EXCLUDES,
     noarchive=False,
 )
