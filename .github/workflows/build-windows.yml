@@ -161,6 +161,13 @@ jobs:
           - arch: x86_64
             python-arch: x64
             label: Intel
+    defaults:
+      run:
+        # setup-python's "x64" Python is a universal binary that would still run natively on Apple silicon:
+        # start every step under the wanted architecture (Rosetta for Intel); child processes inherit it
+        shell: arch -${{ matrix.arch }} /bin/bash -e {0}
+    env:
+      VEILMARK_TARGET_ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

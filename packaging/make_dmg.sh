@@ -7,10 +7,10 @@ cd "$(dirname "$0")/.."
 APP=dist/VeilMark.app
 [ -d "$APP" ] || { echo "Build the app first: pyinstaller packaging/veilmark-macos.spec"; exit 1; }
 
-case "$(file -b "$APP/Contents/MacOS/VeilMark")" in
-  *arm64*) ARCH=AppleSilicon ;;
-  *x86_64*) ARCH=Intel ;;
-  *) echo "Unknown processor type of $APP"; exit 1 ;;
+case "$(lipo -archs "$APP/Contents/MacOS/VeilMark")" in
+  arm64) ARCH=AppleSilicon ;;
+  x86_64) ARCH=Intel ;;
+  *) echo "Unexpected processor type(s) in $APP: $(lipo -archs "$APP/Contents/MacOS/VeilMark")"; exit 1 ;;
 esac
 OUT="dist/VeilMark-macOS-$ARCH.dmg"
 

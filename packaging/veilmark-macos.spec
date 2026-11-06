@@ -1,12 +1,15 @@
 # PyInstaller build recipe for the Mac:   pyinstaller packaging/veilmark-macos.spec --noconfirm
 # Produces dist/VeilMark.app (double-click app). The command line tool is inside it:
 #   VeilMark.app/Contents/MacOS/veilmark-cli
-# The app is built for the processor of the Python that runs PyInstaller (Apple silicon or Intel).
+# The app is built for the processor of the Python that runs PyInstaller (Apple silicon or Intel), or for
+# VEILMARK_TARGET_ARCH (arm64 / x86_64) when set - CI uses that to build the Intel app under Rosetta.
+import os
 import re
 from pathlib import Path
 
 ROOT = Path(SPECPATH).parent
 VERSION = re.search(r'__version__ = "(.+?)"', (ROOT / "veilmark" / "__init__.py").read_text()).group(1)
+TARGET_ARCH = os.environ.get("VEILMARK_TARGET_ARCH") or None
 EXCLUDES = [
     "tkinter", "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "PySide6.Qt3DCore", "PySide6.QtQuick",
     "PySide6.QtQml", "PySide6.QtMultimedia", "PySide6.QtCharts", "PySide6.QtDataVisualization",
@@ -24,9 +27,10 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
-gui = EXE(pyz, a.scripts, [], exclude_binaries=True, name="VeilMark", console=False,
+gui = EXE(pyz, a.scripts, [], exclude_binaries=True, name="VeilMark", console=False, target_arch=TARGET_ARCH,
           icon=str(ROOT / "assets" / "veilmark.icns"))
-cli = EXE(pyz, a.scripts, [], exclude_binaries=True, name="veilmark-cli", console=True)
+cli = EXE(pyz, a.scripts, [], exclude_binaries=True, name="veilmark-cli", console=True,
+          target_arch=TARGET_ARCH)
 coll = COLLECT(gui, cli, a.binaries, a.datas, strip=False, upx=False, name="VeilMark")
 
 app = BUNDLE(
