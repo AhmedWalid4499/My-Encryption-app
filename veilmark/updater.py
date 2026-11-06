@@ -22,6 +22,7 @@ import os
 import platform
 import re
 import shlex
+import ssl
 import subprocess
 import sys
 import urllib.error
@@ -109,10 +110,36 @@ def can_self_install() -> bool:
     return bool(app and not str(app).startswith("/Volumes/") and os.access(app.parent, os.W_OK))
 
 
+_SSL_CONTEXT: Optional[ssl.SSLContext] = None
+
+
+def ssl_context() -> ssl.SSLContext:
+    """Certificates to trust for HTTPS.
+
+    The packaged Mac app runs a python.org Python, which does *not* read the Mac's keychain, so plain urllib fails
+    with "CERTIFICATE_VERIFY_FAILED". Use the computer's own trust store instead (macOS keychain / Windows
+    certificate store, which also covers company proxies), then the bundled Mozilla list as a fallback.
+    """
+    global _SSL_CONTEXT
+    if _SSL_CONTEXT is None:
+        try:
+            import truststore
+
+            _SSL_CONTEXT = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        except Exception:  # noqa: BLE001 - very old OS or missing module: fall back below
+            try:
+                import certifi
+
+                _SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+            except Exception:  # noqa: BLE001
+                _SSL_CONTEXT = ssl.create_default_context()
+    return _SSL_CONTEXT
+
+
 def _get(url: str, timeout: float = 15, accept: str = "application/json"):
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": accept,
                                                "Cache-Control": "no-cache"})
-    return urllib.request.urlopen(req, timeout=timeout)  # noqa: S310 - fixed https URLs
+    return urllib.request.urlopen(req, timeout=timeout, context=ssl_context())  # noqa: S310 - fixed https URLs
 
 
 def _fetch_json(url: str, timeout: float) -> dict:

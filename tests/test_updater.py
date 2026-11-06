@@ -143,6 +143,16 @@ def test_mac_install_script_quotes_paths(tmp_path):
         assert subprocess.run(["bash", "-n", str(path)]).returncode == 0  # valid shell syntax
 
 
+def test_https_uses_a_real_trust_store():
+    """Regression: the Mac app failed every update check with CERTIFICATE_VERIFY_FAILED (no CA certificates)."""
+    import ssl
+
+    ctx = updater.ssl_context()
+    assert isinstance(ctx, ssl.SSLContext)
+    assert ctx.verify_mode == ssl.CERT_REQUIRED and ctx.check_hostname
+    assert type(ctx).__module__.startswith("truststore")  # the computer's own certificates, not a missing bundle
+
+
 def test_packaging_versions_match_app():
     iss = (ROOT / "packaging" / "installer.iss").read_text()
     assert f'#define AppVersion "{__version__}"' in iss

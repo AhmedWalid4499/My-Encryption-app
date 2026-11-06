@@ -62,6 +62,9 @@ jobs:
           $out = .\dist\VeilMark\veilmark-cli.exe extract "${{ runner.temp }}\smoke - watermarked.pptx" | Out-String
           $out
           if ($out -notmatch "Watermark text: CI smoke test") { Write-Error "built app could not extract the watermark"; exit 1 }
+          $upd = .\dist\VeilMark\veilmark-cli.exe check-update | Out-String
+          $upd
+          if ($upd -notmatch "up to date|is available") { Write-Error "built app could not check GitHub for updates"; exit 1 }
       - name: Read app version
         id: ver
         shell: pwsh
@@ -206,6 +209,13 @@ jobs:
           fi
       - name: Build VeilMark.app with PyInstaller
         run: pyinstaller packaging/veilmark-macos.spec --noconfirm --clean
+      - name: Check the app's Info.plist (a normal, foreground Mac app)
+        run: |
+          PL=dist/VeilMark.app/Contents/Info.plist
+          plutil -p "$PL"
+          # regression: LSBackgroundOnly=true made macOS send all typing to the previously active app
+          [ "$(plutil -extract LSBackgroundOnly raw "$PL")" = "false" ] || { echo "app is marked background-only"; exit 1; }
+          [ "$(plutil -extract CFBundleExecutable raw "$PL")" = "VeilMark" ] || { echo "wrong main executable"; exit 1; }
       - name: Sign (ad hoc) and build the disk image
         run: |
           bash packaging/make_dmg.sh
@@ -224,8 +234,10 @@ jobs:
           python -c "import sys; sys.path.insert(0, 'tests'); from samples import make_pptx; make_pptx('${{ runner.temp }}/smoke.pptx')"
           "$CLI" embed "${{ runner.temp }}/smoke.pptx" --text "CI smoke test" --footer
           out=$("$CLI" extract "${{ runner.temp }}/smoke - watermarked.pptx"); echo "$out"
+          upd=$("$CLI" check-update || true); echo "$upd"   # regression: HTTPS failed in the Mac app (no certificates)
           hdiutil detach "$MNT"
           grep -q "Watermark text: CI smoke test" <<< "$out" || { echo "built app could not extract the watermark"; exit 1; }
+          grep -Eq "up to date|is available" <<< "$upd" || { echo "built app could not check GitHub for updates"; exit 1; }
       - uses: actions/upload-artifact@v4
         with:
           name: VeilMark-macOS-${{ matrix.label }}
