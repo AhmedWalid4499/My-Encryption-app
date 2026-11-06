@@ -184,7 +184,10 @@ jobs:
           [ "$m" = "${{ matrix.arch }}" ] || { echo "expected ${{ matrix.arch }}"; exit 1; }
           if [ "${{ matrix.arch }}" = "x86_64" ]; then
             # the universal2 Python would let pip pick Apple-silicon-only wheels: ask for Intel ones only
-            echo "_PYTHON_HOST_PLATFORM=macosx-12.0-x86_64" >> "$GITHUB_ENV"
+            echo "_PYTHON_HOST_PLATFORM=macosx-14.0-x86_64" >> "$GITHUB_ENV"
+            # newer releases of some libraries no longer ship Intel-Mac wheels: never compile them, take the newest
+            # release that still has a prebuilt Intel wheel instead
+            echo "PIP_ONLY_BINARY=cryptography,cffi,numpy,lxml,pillow,pyside6,pyside6-essentials,pyside6-addons,shiboken6" >> "$GITHUB_ENV"
           fi
       - name: Install dependencies
         run: pip install -r requirements-dev.txt

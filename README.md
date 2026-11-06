@@ -63,11 +63,11 @@ didn't go up.
 * **Intel Mac:**
   https://raw.githubusercontent.com/AhmedWalid4499/My-Encryption-app/HEAD/releases/VeilMark-macOS-Intel.dmg
 
-Open the downloaded `.dmg` and drag **VeilMark** onto **Applications**. Needs macOS 12 Monterey or newer.
+Open the downloaded `.dmg` and drag **VeilMark** onto **Applications**. Needs macOS 14 Sonoma or newer.
 
 The first time only, macOS may say it *"cannot verify"* VeilMark, because the app isn't registered (notarised) with
 Apple. Click **Done**, open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to
-VeilMark (on macOS 14 or older you can instead right-click VeilMark → **Open** → **Open**). After that it opens
+VeilMark (on macOS 14 Sonoma you can instead right-click VeilMark → **Open** → **Open**). After that it opens
 normally. If macOS asks whether VeilMark may access your Documents or Desktop folder, click **Allow**, otherwise it
 can't read or save files there.
 

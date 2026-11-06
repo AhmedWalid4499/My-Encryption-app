@@ -46,7 +46,7 @@ app = BUNDLE(
         "CFBundleVersion": VERSION,
         "NSHumanReadableCopyright": "© Ahmed Walid",
         "LSApplicationCategoryType": "public.app-category.productivity",
-        "LSMinimumSystemVersion": "12.0",
+        "LSMinimumSystemVersion": "14.0",
         "NSHighResolutionCapable": True,
         # the app is designed in light colours: keep it light even when the Mac is in Dark Mode
         "NSRequiresAquaSystemAppearance": True,

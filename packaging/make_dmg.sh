@@ -37,7 +37,7 @@ registered with Apple (that costs a yearly fee). It is safe to open:
   * Open System Settings -> Privacy & Security, scroll down, and click "Open Anyway"
     next to the message about VeilMark. Confirm with your password or Touch ID.
 
-  (On macOS 14 or older you can instead right-click VeilMark -> Open -> Open.)
+  (On macOS 14 you can instead right-click VeilMark -> Open -> Open.)
 
 After that VeilMark opens normally, and later updates install themselves.
 TXT
