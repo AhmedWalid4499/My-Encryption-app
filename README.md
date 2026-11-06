@@ -43,7 +43,8 @@ branch. GitHub Actions then:
 2. builds the Windows app and the two Mac apps, embeds and extracts a watermark with each built program, and
    test-installs the Windows installer,
 3. only if all of that passes, commits `VeilMark-Setup-<version>.exe` + an updated `latest.json` and the Mac disk
-   images `VeilMark-macOS-<AppleSilicon|Intel>-<version>.dmg` + updated `latest-macos-*.json` into `releases/`.
+   images `VeilMark-macOS-<AppleSilicon|Intel>-<version>.dmg`, the Mac installers
+   `VeilMark-macOS-<AppleSilicon|Intel>-Installer-<version>.pkg` + updated `latest-macos-*.json` into `releases/`.
 
 Every run also keeps the built files as downloadable *artifacts* on the GitHub Actions run page, so a test build
 can be tried before it is published.
@@ -54,19 +55,23 @@ didn't go up.
 ## Getting the Mac app
 
 **Download:** open the [`releases/`](https://github.com/AhmedWalid4499/My-Encryption-app/tree/HEAD/releases) folder
-and download the newest disk image for your Mac (Apple menu  → *About This Mac*: "Chip: Apple M…" = Apple silicon,
-"Processor: Intel…" = Intel):
+and download the newest **installer** for your Mac (Apple menu  → *About This Mac*: "Chip: Apple M…" = Apple
+silicon, "Processor: Intel…" = Intel):
 
-* **Apple silicon (M1, M2, M3, M4 …):** `VeilMark-macOS-AppleSilicon-<version>.dmg`
-* **Intel Mac:** `VeilMark-macOS-Intel-<version>.dmg`
+* **Apple silicon (M1, M2, M3, M4 …):** `VeilMark-macOS-AppleSilicon-Installer-<version>.pkg`
+* **Intel Mac:** `VeilMark-macOS-Intel-Installer-<version>.pkg`
 
-Open the downloaded `.dmg` and drag **VeilMark** onto **Applications**. Needs macOS 14 Sonoma or newer.
+Double-click it and follow the **installation wizard** (Welcome → Destination → Install → Summary). It puts
+VeilMark in *Applications*, updates an older copy (settings and history are kept) and opens VeilMark when it's done.
+Needs macOS 14 Sonoma or newer. The installer refuses to run on the wrong kind of Mac and says which one to get.
 
-The first time only, macOS may say it *"cannot verify"* VeilMark, because the app isn't registered (notarised) with
+The first time only, macOS may say it *"cannot verify"* the installer, because it isn't registered (notarised) with
 Apple. Click **Done**, open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to
-VeilMark (on macOS 14 Sonoma you can instead right-click VeilMark → **Open** → **Open**). After that it opens
-normally. If macOS asks whether VeilMark may access your Documents or Desktop folder, click **Allow**, otherwise it
-can't read or save files there.
+the installer, then confirm. If macOS asks whether VeilMark may access your Documents or Desktop folder, click
+**Allow**, otherwise it can't read or save files there.
+
+Prefer drag-and-drop? The same version is also there as a disk image, `VeilMark-macOS-<AppleSilicon|Intel>-<version>.dmg`:
+open it and drag **VeilMark** onto **Applications**.
 
 Everything works the same as on Windows: drag files onto the drop zones, *Show in Finder* opens the folder of a
 saved file, and updates install themselves (VeilMark quits, replaces itself in *Applications* and reopens). Files
@@ -79,7 +84,7 @@ The command line tool is inside the app:
 ```
 
 **Build it yourself on a Mac:** install Python 3.11+ (python.org or Homebrew), then run `bash build_macos.sh`
-(it installs dependencies, runs the tests, builds `dist/VeilMark.app` and the `.dmg`).
+(it installs dependencies, runs the tests, builds `dist/VeilMark.app`, the `.dmg` and the installer `.pkg`).
 
 ## Building and publishing
 
@@ -262,7 +267,7 @@ veilmark/
   gui/                 PySide6 (Qt) desktop interface
   cli.py               command line
 tests/                 109 tests incl. LibreOffice re-save, Inspect-Document, slide-copy, multi-hop, cross-PC vectors
-packaging/             PyInstaller specs (Windows, Mac), Inno Setup installer, Mac disk image script, version info
+packaging/             PyInstaller specs (Windows, Mac), Inno Setup installer, Mac installer wizard (.pkg) + disk image scripts
 ```
 
 Run the tests:

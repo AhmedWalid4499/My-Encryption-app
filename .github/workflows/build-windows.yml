@@ -238,16 +238,41 @@ jobs:
           hdiutil detach "$MNT"
           grep -q "Watermark text: CI smoke test" <<< "$out" || { echo "built app could not extract the watermark"; exit 1; }
           grep -Eq "up to date|is available" <<< "$upd" || { echo "built app could not check GitHub for updates"; exit 1; }
+      - name: Build the installer wizard (.pkg)
+        run: |
+          bash packaging/make_pkg.sh
+          test -f dist/VeilMark-macOS-${{ matrix.label }}-Installer.pkg
+      - name: Test the installer (install it, then run the installed app)
+        run: |
+          set -e
+          PKG=dist/VeilMark-macOS-${{ matrix.label }}-Installer.pkg
+          sudo installer -pkg "$PKG" -target /
+          APP=/Applications/VeilMark.app
+          v=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist")
+          [ "$v" = "${{ steps.ver.outputs.version }}" ] || { echo "installed version is '$v'"; exit 1; }
+          [ "$(plutil -extract LSBackgroundOnly raw "$APP/Contents/Info.plist")" = "false" ] || exit 1
+          codesign --verify --deep --strict "$APP"
+          "$APP/Contents/MacOS/veilmark-cli" --version
+          upd=$("$APP/Contents/MacOS/veilmark-cli" check-update || true); echo "$upd"
+          grep -Eq "up to date|is available" <<< "$upd" || { echo "installed app could not check for updates"; exit 1; }
+          pkgutil --pkg-info com.ahmedwalid.veilmark
+          # installing the same package again (an upgrade) must work too
+          sudo installer -pkg "$PKG" -target /
+          sudo rm -rf "$APP"; sudo pkgutil --forget com.ahmedwalid.veilmark
       - uses: actions/upload-artifact@v4
         with:
           name: VeilMark-macOS-${{ matrix.label }}
-          path: dist/VeilMark-macOS-${{ matrix.label }}.dmg
+          path: |
+            dist/VeilMark-macOS-${{ matrix.label }}.dmg
+            dist/VeilMark-macOS-${{ matrix.label }}-Installer.pkg
       - name: Publish release (tags only)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           name: VeilMark ${{ steps.ver.outputs.version }}
-          files: dist/VeilMark-macOS-${{ matrix.label }}.dmg
+          files: |
+            dist/VeilMark-macOS-${{ matrix.label }}.dmg
+            dist/VeilMark-macOS-${{ matrix.label }}-Installer.pkg
 
   publish-macos:
     # After the Windows job has published (so the two never push at the same moment), put the Mac disk images and
@@ -286,8 +311,13 @@ jobs:
               name = f"VeilMark-macOS-{label}-{v}.dmg"   # every version keeps its own disk image in releases/
               shutil.copyfile(dmg, f"releases/{name}")
               data = Path(f"releases/{name}").read_bytes()
+              # the installer wizard for people installing by hand (the app updates itself from the .dmg)
+              pkg, setup = Path(f"dist/VeilMark-macOS-{label}-Installer.pkg"), f"VeilMark-macOS-{label}-Installer-{v}.pkg"
+              shutil.copyfile(pkg, f"releases/{setup}")
+              changed.append(f"releases/{setup}")
               manifest.write_text(json.dumps({
                   "version": v, "installer": name, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data),
+                  "setup": setup, "setup_sha256": hashlib.sha256(Path(f"releases/{setup}").read_bytes()).hexdigest(),
                   "published": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                   "commit": os.environ["GITHUB_SHA"]}, indent=2) + "\n")
               changed += [f"releases/{name}", str(manifest)]

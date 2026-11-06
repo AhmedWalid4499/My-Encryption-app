@@ -3,7 +3,10 @@
 Every released version of VeilMark is here as its own installer:
 
 * `VeilMark-Setup-<version>.exe`: the Windows installer for that version, e.g. `VeilMark-Setup-1.4.0.exe`
-* `VeilMark-macOS-AppleSilicon-<version>.dmg` / `VeilMark-macOS-Intel-<version>.dmg`: the Mac disk images
+* `VeilMark-macOS-AppleSilicon-Installer-<version>.pkg` / `VeilMark-macOS-Intel-Installer-<version>.pkg`: the Mac
+  installation wizards (recommended for installing by hand)
+* `VeilMark-macOS-AppleSilicon-<version>.dmg` / `VeilMark-macOS-Intel-<version>.dmg`: the Mac disk images (drag and
+  drop; the app also updates itself from these)
 * `latest.json`: which Windows version is newest, plus the size and SHA-256 checksum of its installer
 * `latest-macos-arm64.json` / `latest-macos-x86_64.json`: the same for the Apple silicon and Intel Mac apps
 
@@ -12,7 +15,7 @@ Every released version of VeilMark is here as its own installer:
 checks its SHA-256 checksum, and shows **"Update ready – click to install"**.
 
 **To install VeilMark:** open the newest `VeilMark-Setup-<version>.exe` (Windows) or
-`VeilMark-macOS-<AppleSilicon|Intel>-<version>.dmg` (Mac) above and click **Download**
+`VeilMark-macOS-<AppleSilicon|Intel>-Installer-<version>.pkg` (Mac) above and click **Download**
 (the "⋯" or download button on GitHub's file page).
 
 These files are added automatically by GitHub Actions (`.github/workflows/build-windows.yml`) when a
