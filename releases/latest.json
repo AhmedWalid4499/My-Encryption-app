@@ -1,8 +1,8 @@
 {
-  "version": "1.5.0",
-  "installer": "VeilMark-Setup-1.5.0.exe",
-  "sha256": "7d334226e51bea9e9fe67dffa4cadeefad2f4144804fa8277e667bf7d08cb4dc",
-  "size": 51890774,
-  "published": "2026-11-06T11:21:47Z",
-  "commit": "aed710f5b34e5be31fb35bd78b09cd09fc31786c"
+  "version": "1.5.1",
+  "installer": "VeilMark-Setup-1.5.1.exe",
+  "sha256": "66387827efd9b2b43c48a5eb54b7d4d7552a6695b687f4df51d5b534af04fc66",
+  "size": 52059422,
+  "published": "2026-11-06T12:18:59Z",
+  "commit": "de18980159c6bbd89ce6ce9581dedbea75d96ec2"
 }
