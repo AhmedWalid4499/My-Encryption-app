@@ -9,7 +9,7 @@
     <background-darkAqua file="background.png" mime-type="image/png" alignment="bottomleft" scaling="none"/>
 
     <!-- one simple install for this Mac; nothing to customise -->
-    <options customize="never" require-scripts="false" hostArchitectures="@ARCH@" rootVolumeOnly="true"/>
+    <options customize="never" require-scripts="false" hostArchitectures="@HOSTARCHS@" rootVolumeOnly="true"/>
     <domains enable_localSystem="true" enable_anywhere="false" enable_currentUserHome="false"/>
     <volume-check>
         <allowed-os-versions>
@@ -21,9 +21,10 @@
     function checkArch() {
         var arm = system.sysctl("hw.optional.arm64") == 1;
         if ("@ARCH@" == "x86_64" && arm) {
-            my.result.title = "This installer is for Intel Macs";
-            my.result.message = "This Mac has an Apple chip. Please download the VeilMark installer for Apple silicon instead.";
-            my.result.type = "Fatal";
+            // works (through Rosetta), but the Apple silicon version is faster: recommend it, allow continuing
+            my.result.title = "There is a faster VeilMark for this Mac";
+            my.result.message = "This Mac has an Apple chip. The installer for Apple silicon runs faster. You can still continue with this Intel version.";
+            my.result.type = "Warning";
             return false;
         }
         if ("@ARCH@" == "arm64" && !arm) {

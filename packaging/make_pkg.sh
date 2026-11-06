@@ -11,8 +11,9 @@ HERE=packaging/macos-installer
 
 VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist")
 case "$(lipo -archs "$APP/Contents/MacOS/VeilMark")" in
-  arm64) ARCH=arm64; LABEL=AppleSilicon; ARCHNAME="Apple silicon" ;;
-  x86_64) ARCH=x86_64; LABEL=Intel; ARCHNAME="Intel" ;;
+  arm64) ARCH=arm64; HOSTARCHS=arm64; LABEL=AppleSilicon; ARCHNAME="Apple silicon" ;;
+  # the Intel app also runs on Apple silicon (Rosetta), so its installer may run there too
+  x86_64) ARCH=x86_64; HOSTARCHS="x86_64,arm64"; LABEL=Intel; ARCHNAME="Intel" ;;
   *) echo "Unexpected processor type(s) in $APP"; exit 1 ;;
 esac
 OUT="dist/VeilMark-macOS-$LABEL-Installer.pkg"
@@ -38,7 +39,7 @@ pkgbuild --root "$WORK/root" --component-plist "$WORK/component.plist" --install
 # Wizard pages, with the VeilMark shield in the bottom-left corner of every page.
 cp "$HERE/resources/"*.html "$WORK/resources/"
 sips -Z 150 assets/veilmark.png --out "$WORK/resources/background.png" >/dev/null
-sed -e "s/@VERSION@/$VERSION/g" -e "s/@ARCH@/$ARCH/g" -e "s/@ARCHNAME@/$ARCHNAME/g" \
+sed -e "s/@VERSION@/$VERSION/g" -e "s/@HOSTARCHS@/$HOSTARCHS/g" -e "s/@ARCH@/$ARCH/g" -e "s/@ARCHNAME@/$ARCHNAME/g" \
   "$HERE/distribution.xml" > "$WORK/distribution.xml"
 
 rm -f "$OUT"

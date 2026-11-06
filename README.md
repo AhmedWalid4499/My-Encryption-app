@@ -63,7 +63,8 @@ silicon, "Processor: Intel…" = Intel):
 
 Double-click it and follow the **installation wizard** (Welcome → Destination → Install → Summary). It puts
 VeilMark in *Applications*, updates an older copy (settings and history are kept) and opens VeilMark when it's done.
-Needs macOS 14 Sonoma or newer. The installer refuses to run on the wrong kind of Mac and says which one to get.
+Needs macOS 14 Sonoma or newer. The Apple silicon installer refuses to run on an Intel Mac and says which one to
+get; the Intel one also works on Apple silicon (it recommends the faster Apple silicon version).
 
 The first time only, macOS may say it *"cannot verify"* the installer, because it isn't registered (notarised) with
 Apple. Click **Done**, open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to
