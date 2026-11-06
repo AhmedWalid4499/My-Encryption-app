@@ -1,0 +1,6 @@
+#!/bin/bash
+# Runs (as root) before VeilMark.app is copied: quit a running VeilMark so it can be replaced.
+pkill -x VeilMark 2>/dev/null
+for _ in $(seq 1 20); do pgrep -x VeilMark >/dev/null || break; sleep 0.5; done
+pkill -9 -x VeilMark 2>/dev/null
+exit 0

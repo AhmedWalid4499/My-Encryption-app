@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- macOS Installer wizard for VeilMark. make_pkg.sh fills in @VERSION@, @ARCH@ and @ARCHNAME@. -->
+<installer-gui-script minSpecVersion="2">
+    <title>VeilMark @VERSION@</title>
+    <organization>com.ahmedwalid</organization>
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+    <background file="background.png" mime-type="image/png" alignment="bottomleft" scaling="none"/>
+    <background-darkAqua file="background.png" mime-type="image/png" alignment="bottomleft" scaling="none"/>
+
+    <!-- one simple install for this Mac; nothing to customise -->
+    <options customize="never" require-scripts="false" hostArchitectures="@HOSTARCHS@" rootVolumeOnly="true"/>
+    <domains enable_localSystem="true" enable_anywhere="false" enable_currentUserHome="false"/>
+    <volume-check>
+        <allowed-os-versions>
+            <os-version min="14.0"/>
+        </allowed-os-versions>
+    </volume-check>
+    <installation-check script="checkArch()"/>
+    <script><![CDATA[
+    function checkArch() {
+        var arm = system.sysctl("hw.optional.arm64") == 1;
+        if ("@ARCH@" == "x86_64" && arm) {
+            // works (through Rosetta), but the Apple silicon version is faster: recommend it, allow continuing
+            my.result.title = "There is a faster VeilMark for this Mac";
+            my.result.message = "This Mac has an Apple chip. The installer for Apple silicon runs faster. You can still continue with this Intel version.";
+            my.result.type = "Warning";
+            return false;
+        }
+        if ("@ARCH@" == "arm64" && !arm) {
+            my.result.title = "This installer is for Apple silicon Macs";
+            my.result.message = "This Mac has an Intel processor. Please download the VeilMark installer for Intel Macs instead.";
+            my.result.type = "Fatal";
+            return false;
+        }
+        return true;
+    }
+    ]]></script>
+
+    <choices-outline>
+        <line choice="default">
+            <line choice="com.ahmedwalid.veilmark"/>
+        </line>
+    </choices-outline>
+    <choice id="default"/>
+    <choice id="com.ahmedwalid.veilmark" visible="false" title="VeilMark (@ARCHNAME@)">
+        <pkg-ref id="com.ahmedwalid.veilmark"/>
+    </choice>
+    <pkg-ref id="com.ahmedwalid.veilmark" version="@VERSION@" onConclusion="none">VeilMark-component.pkg</pkg-ref>
+</installer-gui-script>

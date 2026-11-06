@@ -1,0 +1,21 @@
+#!/bin/bash
+# Runs (as root) after VeilMark.app has been copied into /Applications.
+APP="$2/Applications/VeilMark.app"
+[ -d "$APP" ] || APP="/Applications/VeilMark.app"
+
+# The person who is logged in (the installer itself runs as root).
+USER_NAME=$(stat -f %Su /dev/console 2>/dev/null)
+
+# Give the app to that person, exactly like dragging it into Applications would: VeilMark's automatic updates
+# replace the app without asking for an administrator password, which they can't do with a root-owned copy.
+if [ -n "$USER_NAME" ] && [ "$USER_NAME" != "root" ]; then
+  chown -R "$USER_NAME":staff "$APP"
+fi
+xattr -dr com.apple.quarantine "$APP" 2>/dev/null
+
+# Open VeilMark for the person (not as root) - skipped for silent command-line installs.
+if [ "$COMMAND_LINE_INSTALL" != "1" ] && [ -n "$USER_NAME" ] && [ "$USER_NAME" != "root" ]; then
+  USER_ID=$(id -u "$USER_NAME")
+  launchctl asuser "$USER_ID" sudo -u "$USER_NAME" open "$APP" >/dev/null 2>&1 &
+fi
+exit 0
